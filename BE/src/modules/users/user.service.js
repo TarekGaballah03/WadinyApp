@@ -69,7 +69,7 @@ export const signUp = asyncHandler(async (req, res, next) => {
   if (req?.file) {
     try {
       const result = await cloudinary.uploader.upload(req.file.path, {
-        folder: "wedeny/users",
+        folder: "wadiny/users",
       });
       secure_url = result.secure_url;
       public_id = result.public_id;
@@ -242,7 +242,7 @@ export const updateProfile = asyncHandler(async (req, res, next) => {
     const { secure_url, public_id } = await cloudinary.uploader.upload(
       req.file.path,
       {
-        folder: "wedeny/users",
+        folder: "wadiny/users",
       }
     );
     req.body.image = { secure_url, public_id };
