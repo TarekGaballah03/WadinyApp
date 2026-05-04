@@ -100,4 +100,9 @@ userRouter.get(
   US.checkFollowing
 );
 
+// ==================== Profile Routes ====================
+userRouter.get("/my-profile", authentication, US.getMyProfile);  // ✅ أضيفي السطر ده
+
+
+
 export default userRouter;

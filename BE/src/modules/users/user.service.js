@@ -93,8 +93,11 @@ export const signUp = asyncHandler(async (req, res, next) => {
     password: hash,
     phone: cipherText,
     image: { secure_url, public_id },
-    confirmed: true, // للتجربة، شيل/يه بعدين
+    // confirmed: true, // للتجربة، شيل/يه بعدين
   });
+  
+  // إرسال إيميل التأكيد
+  eventEmitter.emit("sendEmailConfirmation", { email, id: user._id });
 
   return res.status(201).json({ msg: "done", user });
 });
@@ -293,6 +296,32 @@ export const shareProfile = asyncHandler(async (req, res, next) => {
   }
 
   return res.status(200).json({ msg: "done", user });
+});
+
+// ==================== Get My Profile ====================
+export const getMyProfile = asyncHandler(async (req, res, next) => {
+  const user = await userModel
+    .findById(req.user._id)
+    .select("-password -otpEmail -otpPassword -tempEmail");
+
+  if (!user) {
+    return next(new Error("User not found", { cause: 404 }));
+  }
+
+  return res.status(200).json({
+    msg: "done",
+    user: {
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+      image: user.image,
+      role: user.role,
+      confirmed: user.confirmed,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    },
+  });
 });
 
 // ==================== Settings APIs ====================
