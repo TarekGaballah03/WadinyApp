@@ -6,6 +6,7 @@ import { verifyToken } from "../utils/token/verifyToken.js";
 export const roles = {
   admin: "admin",
   user: "user",
+   restaurant: "restaurant",  
 };
 
 export const tokenTypes = {

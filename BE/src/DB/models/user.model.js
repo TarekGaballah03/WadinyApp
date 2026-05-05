@@ -9,11 +9,13 @@ export const genderTypes = {
 export const roleTypes = {
   user: "user",
   admin: "admin",
+   restaurant: "restaurant", 
 };
 
 export const roles = {
   user: "user",
   admin: "admin",
+  restaurant: "restaurant",
 };
 
 export const providerTypes = {
@@ -87,6 +89,11 @@ const userSchema = new mongoose.Schema(
         offers: { type: Boolean, default: true },
         comments: { type: Boolean, default: true },
         likes: { type: Boolean, default: true },
+      },
+      privacy: {
+        showEmail: { type: Boolean, default: false },
+        showPhone: { type: Boolean, default: false },
+        showActivity: { type: Boolean, default: true },
       },
     },
     // Follow system

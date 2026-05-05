@@ -71,6 +71,12 @@ userRouter.patch(
   authentication,
   US.updateNotifications
 );
+userRouter.patch(
+  "/settings/privacy",
+  validation(UV.updatePrivacySchema),
+  authentication,
+  US.updatePrivacy
+);
 userRouter.delete(
   "/deleteAccount",
   validation(UV.deleteAccountSchema),
@@ -101,8 +107,6 @@ userRouter.get(
 );
 
 // ==================== Profile Routes ====================
-userRouter.get("/my-profile", authentication, US.getMyProfile);  // ✅ أضيفي السطر ده
-
-
+userRouter.get("/my-profile", authentication, US.getMyProfile);
 
 export default userRouter;

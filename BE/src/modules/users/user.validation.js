@@ -55,6 +55,7 @@ export const updateProfileSchema = {
     name: joi.string().alphanum().min(3).max(30),
     gender: joi.string().valid(genderTypes.female, genderTypes.male),
     phone: joi.string().regex(/^01[0125][0-9]{8}$/),
+    removeImage: joi.boolean(),
   }).required(),
   file: generalRules.file,
 };
@@ -81,6 +82,14 @@ export const updateNotificationsSchema = {
     offers: joi.boolean(),
     comments: joi.boolean(),
     likes: joi.boolean(),
+  }).required(),
+};
+
+export const updatePrivacySchema = {
+  body: joi.object({
+    showEmail: joi.boolean(),
+    showPhone: joi.boolean(),
+    showActivity: joi.boolean(),
   }).required(),
 };
 

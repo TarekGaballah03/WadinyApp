@@ -1,6 +1,7 @@
 // src/modules/users/user.service.js
 import { userModel, providerTypes, roles } from "../../DB/models/user.model.js";
 import { Encrypt } from "../../utils/encryption/encrypt.js";
+import { Decrypt } from "../../utils/encryption/decrypt.js";
 import { Hash } from "../../utils/encryption/hash.js";
 import { Compare } from "../../utils/encryption/compare.js";
 import { asyncHandler } from "../../utils/globalErrorHandling/index.js";
@@ -62,7 +63,6 @@ export const signUp = asyncHandler(async (req, res, next) => {
     return next(new Error(`Email already exists`, { cause: 400 }));
   }
 
-  // مؤقتًا: من غير صورة (عدلي لما تظبطي Cloudinary)
   let secure_url = null;
   let public_id = null;
 
@@ -93,10 +93,8 @@ export const signUp = asyncHandler(async (req, res, next) => {
     password: hash,
     phone: cipherText,
     image: { secure_url, public_id },
-    // confirmed: true, // للتجربة، شيل/يه بعدين
   });
   
-  // إرسال إيميل التأكيد
   eventEmitter.emit("sendEmailConfirmation", { email, id: user._id });
 
   return res.status(201).json({ msg: "done", user });
@@ -136,6 +134,11 @@ export const login = asyncHandler(async (req, res, next) => {
     return next(new Error(`Invalid password`, { cause: 400 }));
   }
 
+  let decryptedPhone = null;
+  if (user.phone) {
+    decryptedPhone = await Decrypt({ key: user.phone, SECRET_KEY: process.env.SECRET_KEY });
+  }
+
   const access_token = await generalToken({
     payload: { email, id: user._id },
     SIGNATURE:
@@ -156,6 +159,14 @@ export const login = asyncHandler(async (req, res, next) => {
 
   return res.status(201).json({
     msg: "done",
+    user: {
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      phone: decryptedPhone,
+      image: user.image,
+      role: user.role,
+    },
     token: {
       access_token,
       refresh_token,
@@ -224,15 +235,30 @@ export const resetPassword = asyncHandler(async (req, res, next) => {
 
 // ==================== Update Profile ====================
 export const updateProfile = asyncHandler(async (req, res, next) => {
+  const updateData = {};
+
+  if (req.body.removeImage === true || req.body.removeImage === "true") {
+    if (req.user.image?.public_id) {
+      try {
+        await cloudinary.uploader.destroy(req.user.image.public_id);
+      } catch (err) {
+        console.log("Error deleting image:", err);
+      }
+    }
+    updateData.image = { secure_url: null, public_id: null };
+  }
+
+  if (req.body.name) updateData.name = req.body.name;
+
   if (req.body.phone) {
-    req.body.phone = await Encrypt({
+    updateData.phone = await Encrypt({
       key: req.body.phone,
       SECRET_KEY: process.env.SECRET_KEY,
     });
   }
 
   if (req.file) {
-    if (req.user.image?.public_id) {
+    if (req.user.image?.public_id && !req.body.removeImage) {
       try {
         await cloudinary.uploader.destroy(req.user.image.public_id);
       } catch (err) {
@@ -245,16 +271,31 @@ export const updateProfile = asyncHandler(async (req, res, next) => {
         folder: "wadiny/users",
       }
     );
-    req.body.image = { secure_url, public_id };
+    updateData.image = { secure_url, public_id };
   }
 
   const user = await userModel.findByIdAndUpdate(
     { _id: req.user._id },
-    req.body,
+    updateData,
     { new: true }
   ).select("-password -otpEmail -otpPassword -tempEmail");
   
-  return res.status(201).json({ msg: "done", user });
+  let decryptedPhone = null;
+  if (user.phone) {
+    decryptedPhone = await Decrypt({ key: user.phone, SECRET_KEY: process.env.SECRET_KEY });
+  }
+
+  return res.status(200).json({
+    msg: "done",
+    user: {
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      phone: decryptedPhone,
+      image: user.image,
+      role: user.role,
+    }
+  });
 });
 
 // ==================== Update Password ====================
@@ -279,23 +320,79 @@ export const updatePassword = asyncHandler(async (req, res, next) => {
   return res.status(201).json({ msg: "done", user });
 });
 
-// ==================== Share Profile ====================
+// ==================== Share Profile (مع تطبيق الخصوصية) ====================
 export const shareProfile = asyncHandler(async (req, res, next) => {
   const { id } = req.params;
-
-  const user = await userModel
+  const currentUserId = req.user._id.toString();
+  
+  const targetUser = await userModel
     .findOne({ _id: id, isDeleted: false })
     .select("-password -otpEmail -otpPassword -tempEmail");
 
-  if (!user) {
+  if (!targetUser) {
     return next(new Error("User not exists or deleted", { cause: 400 }));
   }
 
-  if (req.user._id.toString() === id) {
-    return res.status(200).json({ msg: "done", user: req.user });
+  // البيانات الأساسية اللي تظهر دايماً
+  const responseUser = {
+    _id: targetUser._id,
+    name: targetUser.name,
+    image: targetUser.image,
+    role: targetUser.role,
+    createdAt: targetUser.createdAt,
+    followersCount: targetUser.followers?.length || 0,
+    followingCount: targetUser.following?.length || 0,
+  };
+
+  // ===== حالة صاحب الحساب نفسه =====
+  if (currentUserId === id) {
+    let decryptedPhone = null;
+    if (targetUser.phone) {
+      decryptedPhone = await Decrypt({ key: targetUser.phone, SECRET_KEY: process.env.SECRET_KEY });
+    }
+    
+    return res.status(200).json({
+      msg: "done",
+      user: {
+        ...responseUser,
+        email: targetUser.email,
+        phone: decryptedPhone,
+        settings: targetUser.settings,
+        confirmed: targetUser.confirmed,
+      },
+    });
   }
 
-  return res.status(200).json({ msg: "done", user });
+  // ===== حالة مستخدم تاني =====
+  const privacySettings = targetUser.settings?.privacy || {
+    showEmail: false,
+    showPhone: false,
+    showActivity: true,
+  };
+
+  // الإيميل: يظهر فقط لو showEmail = true
+  if (privacySettings.showEmail === true) {
+    responseUser.email = targetUser.email;
+  } else {
+    responseUser.email = null;
+  }
+
+  // رقم التليفون: يظهر فقط لو showPhone = true
+  if (privacySettings.showPhone === true && targetUser.phone) {
+    const decryptedPhone = await Decrypt({ key: targetUser.phone, SECRET_KEY: process.env.SECRET_KEY });
+    responseUser.phone = decryptedPhone;
+  } else {
+    responseUser.phone = null;
+  }
+
+  // النشاط: يظهر فقط لو showActivity = true
+  if (privacySettings.showActivity === true) {
+    responseUser.lastActive = targetUser.updatedAt;
+  } else {
+    responseUser.lastActive = null;
+  }
+
+  return res.status(200).json({ msg: "done", user: responseUser });
 });
 
 // ==================== Get My Profile ====================
@@ -308,16 +405,22 @@ export const getMyProfile = asyncHandler(async (req, res, next) => {
     return next(new Error("User not found", { cause: 404 }));
   }
 
+  let decryptedPhone = null;
+  if (user.phone) {
+    decryptedPhone = await Decrypt({ key: user.phone, SECRET_KEY: process.env.SECRET_KEY });
+  }
+
   return res.status(200).json({
     msg: "done",
     user: {
       _id: user._id,
       name: user.name,
       email: user.email,
-      phone: user.phone,
+      phone: decryptedPhone,
       image: user.image,
       role: user.role,
       confirmed: user.confirmed,
+      settings: user.settings,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     },
@@ -326,7 +429,6 @@ export const getMyProfile = asyncHandler(async (req, res, next) => {
 
 // ==================== Settings APIs ====================
 
-// 1. Get Settings
 export const getSettings = asyncHandler(async (req, res, next) => {
   const user = await userModel.findById(req.user._id).select("settings");
 
@@ -338,6 +440,11 @@ export const getSettings = asyncHandler(async (req, res, next) => {
       comments: true,
       likes: true,
     },
+    privacy: {
+      showEmail: false,
+      showPhone: false,
+      showActivity: true,
+    },
   };
 
   return res.status(200).json({
@@ -345,7 +452,6 @@ export const getSettings = asyncHandler(async (req, res, next) => {
   });
 });
 
-// 2. Update Notifications Settings
 export const updateNotifications = asyncHandler(async (req, res, next) => {
   const { push, email, offers, comments, likes } = req.body;
 
@@ -375,7 +481,33 @@ export const updateNotifications = asyncHandler(async (req, res, next) => {
   });
 });
 
-// 3. Delete Account
+export const updatePrivacy = asyncHandler(async (req, res, next) => {
+  const { showEmail, showPhone, showActivity } = req.body;
+
+  const currentSettings = req.user.settings || { privacy: {} };
+
+  const updatedPrivacy = {
+    showEmail: showEmail !== undefined ? showEmail : currentSettings.privacy?.showEmail ?? false,
+    showPhone: showPhone !== undefined ? showPhone : currentSettings.privacy?.showPhone ?? false,
+    showActivity: showActivity !== undefined ? showActivity : currentSettings.privacy?.showActivity ?? true,
+  };
+
+  const user = await userModel.findByIdAndUpdate(
+    req.user._id,
+    {
+      $set: {
+        "settings.privacy": updatedPrivacy,
+      },
+    },
+    { new: true }
+  ).select("-password -otpEmail -otpPassword -tempEmail");
+
+  return res.status(200).json({
+    msg: "Privacy settings updated successfully",
+    settings: user.settings,
+  });
+});
+
 export const deleteAccount = asyncHandler(async (req, res, next) => {
   const { password } = req.body;
 
@@ -401,7 +533,6 @@ export const deleteAccount = asyncHandler(async (req, res, next) => {
 
 // ==================== Follow System APIs ====================
 
-// 4. Follow User
 export const followUser = asyncHandler(async (req, res, next) => {
   const { userId } = req.params;
 
@@ -424,7 +555,6 @@ export const followUser = asyncHandler(async (req, res, next) => {
   return res.status(200).json({ msg: "Followed successfully" });
 });
 
-// 5. Unfollow User
 export const unfollowUser = asyncHandler(async (req, res, next) => {
   const { userId } = req.params;
 
@@ -439,25 +569,42 @@ export const unfollowUser = asyncHandler(async (req, res, next) => {
   return res.status(200).json({ msg: "Unfollowed successfully" });
 });
 
-// 6. Get Followers
 export const getFollowers = asyncHandler(async (req, res, next) => {
   const user = await userModel
     .findById(req.user._id)
-    .populate("followers", "name email image");
+    .populate("followers", "name email image settings");
 
-  return res.status(200).json({ followers: user.followers });
+  const cleanedFollowers = user.followers.map(follower => {
+    const privacy = follower.settings?.privacy || {};
+    return {
+      _id: follower._id,
+      name: follower.name,
+      image: follower.image,
+      email: privacy.showEmail === true ? follower.email : null,
+    };
+  });
+
+  return res.status(200).json({ followers: cleanedFollowers });
 });
 
-// 7. Get Following
 export const getFollowing = asyncHandler(async (req, res, next) => {
   const user = await userModel
     .findById(req.user._id)
-    .populate("following", "name email image");
+    .populate("following", "name email image settings");
 
-  return res.status(200).json({ following: user.following });
+  const cleanedFollowing = user.following.map(following => {
+    const privacy = following.settings?.privacy || {};
+    return {
+      _id: following._id,
+      name: following.name,
+      image: following.image,
+      email: privacy.showEmail === true ? following.email : null,
+    };
+  });
+
+  return res.status(200).json({ following: cleanedFollowing });
 });
 
-// 8. Check if following
 export const checkFollowing = asyncHandler(async (req, res, next) => {
   const { userId } = req.params;
   const isFollowing = req.user.following.includes(userId);
