@@ -3,6 +3,7 @@ import { connectionDB } from "./DB/connectionDB.js";
 import userRouter from "./modules/users/user.controller.js";
 import { globalErrorHandler } from "./utils/globalErrorHandling/index.js";
 import restaurantRouter from "./modules/restaurants/restaurant.controller.js";
+import aiRouter from "./modules/ai/ai.controller.js";
 
 import cors from "cors";
 import path from "path";
@@ -20,6 +21,7 @@ const bootstrap = async (app, express) => {
 
   app.use("/users", userRouter);
   app.use("/restaurants", restaurantRouter);
+  app.use("/ai", aiRouter);
 
 
  app.use((req, res, next) => {
