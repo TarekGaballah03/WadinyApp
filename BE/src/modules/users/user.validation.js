@@ -5,12 +5,14 @@ import { genderTypes } from "../../DB/models/user.model.js";
 
 export const signUpSchema = {
   body: joi.object({
-    name: joi.string().alphanum().min(3).max(30).required(),
+    name: joi.string().min(3).max(30).required(),
     email: generalRules.email.required(),
     password: generalRules.password.required(),
     cPassword: generalRules.password.valid(joi.ref("password")).required(),
     gender: joi.string().valid(genderTypes.female, genderTypes.male),
     phone: joi.string().regex(/^01[0125][0-9]{8}$/).required(),
+    role: joi.string().valid("user", "admin", "restaurant").optional(),
+
   }).required(),
   file: generalRules.file.required(),
 };

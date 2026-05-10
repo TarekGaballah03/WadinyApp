@@ -284,6 +284,7 @@ export default function SettingsPage() {
                     type="email" 
                     name="email"
                     value={userInfo.email}
+                    disabled  
                     onChange={handleInputChange}
                     className={`w-full px-4 py-2 rounded-xl border focus:outline-none focus:ring-2 focus:ring-[#2B86ED] ${isDarkMode ? 'bg-white/10 border-white/20 text-white' : 'bg-gray-50 border-gray-200 text-gray-900'}`}
                   />

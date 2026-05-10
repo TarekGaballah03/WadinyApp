@@ -11,239 +11,217 @@ import { decodedToken, tokenTypes } from "../../middleware/auth.js";
 import { OAuth2Client } from "google-auth-library";
 import cloudinary from "../../utils/cloudinary/index.js";
 
-// ==================== Login with Gmail ====================
-export const loginWithGmail = asyncHandler(async (req, res, next) => {
-  const { idToken } = req.body;
-  const client = new OAuth2Client();
+// --- Helper to select signature based on role ---
+const getSignatures = (role) => {
+  let access_sig = process.env.ACCESS_SIGNATURE_USER;
+  let refresh_sig = process.env.REFRESH_SIGNATURE_USER;
 
-  async function verify() {
-    const ticket = await client.verifyIdToken({
-      idToken,
-      audience: process.env.CLIENT_ID,
-    });
-    const payload = ticket.getPayload();
-    return payload;
+  if (role === roles.admin) {
+    access_sig = process.env.ACCESS_SIGNATURE_ADMIN;
+    refresh_sig = process.env.REFRESH_SIGNATURE_ADMIN;
+  } else if (role === roles.restaurant) {
+    access_sig = process.env.ACCESS_SIGNATURE_REST;
+    refresh_sig = process.env.REFRESH_SIGNATURE_REST;
   }
+  return { access_sig, refresh_sig };
+};
 
-  const { email, email_verified, picture, name } = await verify();
+// --- Helper to get prefix based on role ---
+const getTokenPrefix = (role) => {
+  if (role === roles.admin) return process.env.PREFIX_TOKEN_ADMIN;
+  if (role === roles.restaurant) return process.env.PREFIX_TOKEN_REST;
+  return process.env.PREFIX_TOKEN_USER;
+};
 
-  let user = await userModel.findOne({ email });
-
-  if (!user) {
-    user = await userModel.create({
-      name,
-      email,
-      confirmed: email_verified,
-      image: { secure_url: picture, public_id: null },
-      provider: providerTypes.google,
-    });
-  }
-
-  if (user.provider != providerTypes.google) {
-    return next(new Error("Please login with system"));
-  }
-
-  const access_token = await generalToken({
-    payload: { email, id: user._id },
-    SIGNATURE:
-      user.role == roles.user
-        ? process.env.ACCESS_SIGNATURE_USER
-        : process.env.ACCESS_SIGNATURE_ADMIN,
-    option: { expiresIn: "1d" },
-  });
-
-  return res.status(201).json({ msg: "done", token: access_token });
-});
-
-// ==================== SignUp ====================
+// ==================== 1. Sign Up ====================
 export const signUp = asyncHandler(async (req, res, next) => {
-  const { name, email, password, phone } = req.body;
+  const { name, email, password, phone, gender, role } = req.body;
 
   if (await userModel.findOne({ email })) {
-    return next(new Error(`Email already exists`, { cause: 400 }));
+    return next(new Error("Email already exists", { cause: 409 }));
   }
 
-  let secure_url = null;
-  let public_id = null;
+  const hashedPassword = await Hash({ key: password, SALT_ROUNDS: process.env.SALT_ROUNDS });
+  const encryptedPhone = await Encrypt({ key: phone, SECRET_KEY: process.env.SECRET_KEY });
 
-  if (req?.file) {
-    try {
-      const result = await cloudinary.uploader.upload(req.file.path, {
-        folder: "wadiny/users",
-      });
-      secure_url = result.secure_url;
-      public_id = result.public_id;
-    } catch (err) {
-      console.log("Cloudinary error:", err);
-    }
+  let image = {};
+  if (req.file) {
+    const { secure_url, public_id } = await cloudinary.uploader.upload(req.file.path, {
+      folder: "wadiny/users",
+    });
+    image = { secure_url, public_id };
   }
-
-  const cipherText = await Encrypt({
-    key: phone,
-    SECRET_KEY: process.env.SECRET_KEY,
-  });
-  const hash = await Hash({
-    key: password,
-    SALT_ROUNDS: process.env.SALT_ROUNDS,
-  });
 
   const user = await userModel.create({
     name,
     email,
-    password: hash,
-    phone: cipherText,
-    image: { secure_url, public_id },
+    password: hashedPassword,
+    phone: encryptedPhone,
+    gender,
+    image,
+    role: role || "user",
   });
-  
+
   eventEmitter.emit("sendEmailConfirmation", { email, id: user._id });
 
-  return res.status(201).json({ msg: "done", user });
+  return res.status(201).json({ msg: "User created. Please check your email to confirm.", user });
 });
 
-// ==================== Confirm Email ====================
+// ==================== 2. Confirm Email ====================
 export const confirmEmail = asyncHandler(async (req, res, next) => {
-  const { email, code } = req.body;
-
+  const { email, otp } = req.body;
   const user = await userModel.findOne({ email, confirmed: false });
-  if (!user) {
-    return next(new Error(`Email not exists or already confirmed`, { cause: 404 }));
+
+  if (!user) return next(new Error("User not found or already confirmed", { cause: 404 }));
+
+  if (!(await Compare({ key: otp, hashed: user.otpEmail }))) {
+    return next(new Error("Invalid OTP", { cause: 400 }));
   }
 
-  if (!(await Compare({ key: code, hashed: user.otpEmail }))) {
-    return next(new Error(`Invalid code`, { cause: 400 }));
-  }
-
-  await userModel.updateOne({ email }, { confirmed: true, $unset: { otpEmail: 0 } });
-  return res.status(201).json({ msg: "done" });
+  await userModel.updateOne({ email }, { confirmed: true, $unset: { otpEmail: 1 } });
+  return res.status(200).json({ msg: "Email confirmed successfully" });
 });
 
-// ==================== Login ====================
+// ==================== 3. Login ====================
 export const login = asyncHandler(async (req, res, next) => {
   const { email, password } = req.body;
 
-  const user = await userModel.findOne({
-    email,
-    confirmed: true,
-    provider: providerTypes.system,
-  });
-  if (!user) {
-    return next(new Error(`Email not exists or not confirmed yet`, { cause: 404 }));
-  }
+  const user = await userModel.findOne({ email, confirmed: true, isDeleted: false });
+  if (!user) return next(new Error("Invalid email or not confirmed", { cause: 404 }));
 
   if (!(await Compare({ key: password, hashed: user.password }))) {
-    return next(new Error(`Invalid password`, { cause: 400 }));
+    return next(new Error("Invalid password", { cause: 400 }));
   }
 
-  let decryptedPhone = null;
-  if (user.phone) {
-    decryptedPhone = await Decrypt({ key: user.phone, SECRET_KEY: process.env.SECRET_KEY });
-  }
+  const { access_sig, refresh_sig } = getSignatures(user.role);
 
   const access_token = await generalToken({
     payload: { email, id: user._id },
-    SIGNATURE:
-      user.role == roles.user
-        ? process.env.ACCESS_SIGNATURE_USER
-        : process.env.ACCESS_SIGNATURE_ADMIN,
+    SIGNATURE: access_sig,
     option: { expiresIn: "1d" },
   });
 
   const refresh_token = await generalToken({
     payload: { email, id: user._id },
-    SIGNATURE:
-      user.role == roles.user
-        ? process.env.REFRESH_SIGNATURE_USER
-        : process.env.REFRESH_SIGNATURE_ADMIN,
-    option: { expiresIn: "1w" },
+    SIGNATURE: refresh_sig,
+    option: { expiresIn: "7d" },
   });
 
-  return res.status(201).json({
-    msg: "done",
-    user: {
-      _id: user._id,
-      name: user.name,
-      email: user.email,
-      phone: decryptedPhone,
-      image: user.image,
-      role: user.role,
-    },
+  const tokenPrefix = getTokenPrefix(user.role);
+
+  return res.status(200).json({
+    msg: "Login successful",
     token: {
       access_token,
       refresh_token,
+      prefix: tokenPrefix,
     },
+    role: user.role,
   });
 });
 
-// ==================== Refresh Token ====================
+// ==================== 4. Refresh Token ====================
 export const refreshToken = asyncHandler(async (req, res, next) => {
-  const { authorization } = req.body;
+  const { authorization } = req.headers;
+
   const user = await decodedToken({
     authorization,
     tokenType: tokenTypes.refresh,
     next,
   });
 
+  const { access_sig } = getSignatures(user.role);
+  const tokenPrefix = getTokenPrefix(user.role);
+
   const access_token = await generalToken({
     payload: { email: user.email, id: user._id },
-    SIGNATURE:
-      user.role == roles.user
-        ? process.env.ACCESS_SIGNATURE_USER
-        : process.env.ACCESS_SIGNATURE_ADMIN,
+    SIGNATURE: access_sig,
     option: { expiresIn: "1d" },
   });
 
-  return res.status(201).json({ msg: "done", token: access_token });
+  return res.status(200).json({ 
+    msg: "Token refreshed", 
+    access_token,
+    prefix: tokenPrefix 
+  });
 });
 
-// ==================== Forget Password ====================
-export const forgetPassword = asyncHandler(async (req, res, next) => {
-  const { email } = req.body;
+// ==================== 5. Login With Gmail ====================
+export const loginWithGmail = asyncHandler(async (req, res, next) => {
+  const { idToken } = req.body;
+  const client = new OAuth2Client();
 
-  if (!(await userModel.findOne({ email, isDeleted: false }))) {
-    return next(new Error(`Email not exists`, { cause: 404 }));
+  const ticket = await client.verifyIdToken({
+    idToken,
+    audience: process.env.CLIENT_ID,
+  });
+  const { email, email_verified, picture, name } = ticket.getPayload();
+
+  let user = await userModel.findOne({ email });
+  if (!user) {
+    user = await userModel.create({
+      name, email,
+      confirmed: email_verified,
+      image: { secure_url: picture, public_id: null },
+      provider: providerTypes.google,
+      role: "user",
+    });
   }
 
-  eventEmitter.emit("forgetPassword", { email });
-  return res.status(201).json({ msg: "done" });
+  const { access_sig } = getSignatures(user.role);
+  const tokenPrefix = getTokenPrefix(user.role);
+
+  const access_token = await generalToken({
+    payload: { email, id: user._id },
+    SIGNATURE: access_sig,
+    option: { expiresIn: "1d" },
+  });
+
+  return res.status(200).json({ 
+    msg: "Google login successful", 
+    access_token,
+    prefix: tokenPrefix 
+  });
 });
 
-// ==================== Reset Password ====================
+// ==================== 6. Forget Password ====================
+export const forgetPassword = asyncHandler(async (req, res, next) => {
+  const { email } = req.body;
+  const user = await userModel.findOne({ email, isDeleted: false });
+  if (!user) return next(new Error("Email not found", { cause: 404 }));
+
+  eventEmitter.emit("forgetPassword", { email });
+  return res.status(200).json({ msg: "OTP sent to your email" });
+});
+
+// ==================== 7. Reset Password ====================
 export const resetPassword = asyncHandler(async (req, res, next) => {
   const { email, code, newPassword } = req.body;
 
   const user = await userModel.findOne({ email, isDeleted: false });
-  if (!user) {
-    return next(new Error(`Email not exists`, { cause: 404 }));
-  }
+  if (!user) return next(new Error("Email not exists", { cause: 404 }));
 
   if (!(await Compare({ key: code, hashed: user.otpPassword }))) {
     return next(new Error("Invalid code", { cause: 400 }));
   }
 
-  const hash = await Hash({
-    key: newPassword,
-    SALT_ROUNDS: process.env.SALT_ROUNDS,
-  });
+  const hash = await Hash({ key: newPassword, SALT_ROUNDS: process.env.SALT_ROUNDS });
 
   await userModel.updateOne(
     { email },
     { password: hash, confirmed: true, $unset: { otpPassword: 0 } }
   );
 
-  return res.status(201).json({ msg: "done" });
+  return res.status(201).json({ msg: "Password reset successfully" });
 });
 
-// ==================== Update Profile ====================
+// ==================== 8. Update Profile ====================
 export const updateProfile = asyncHandler(async (req, res, next) => {
   const updateData = {};
 
   if (req.body.removeImage === true || req.body.removeImage === "true") {
     if (req.user.image?.public_id) {
-      try {
-        await cloudinary.uploader.destroy(req.user.image.public_id);
-      } catch (err) {
-        console.log("Error deleting image:", err);
-      }
+      await cloudinary.uploader.destroy(req.user.image.public_id).catch(() => {});
     }
     updateData.image = { secure_url: null, public_id: null };
   }
@@ -251,26 +229,16 @@ export const updateProfile = asyncHandler(async (req, res, next) => {
   if (req.body.name) updateData.name = req.body.name;
 
   if (req.body.phone) {
-    updateData.phone = await Encrypt({
-      key: req.body.phone,
-      SECRET_KEY: process.env.SECRET_KEY,
-    });
+    updateData.phone = await Encrypt({ key: req.body.phone, SECRET_KEY: process.env.SECRET_KEY });
   }
 
   if (req.file) {
     if (req.user.image?.public_id && !req.body.removeImage) {
-      try {
-        await cloudinary.uploader.destroy(req.user.image.public_id);
-      } catch (err) {
-        console.log("Error deleting old image:", err);
-      }
+      await cloudinary.uploader.destroy(req.user.image.public_id).catch(() => {});
     }
-    const { secure_url, public_id } = await cloudinary.uploader.upload(
-      req.file.path,
-      {
-        folder: "wadiny/users",
-      }
-    );
+    const { secure_url, public_id } = await cloudinary.uploader.upload(req.file.path, {
+      folder: "wadiny/users",
+    });
     updateData.image = { secure_url, public_id };
   }
 
@@ -279,7 +247,7 @@ export const updateProfile = asyncHandler(async (req, res, next) => {
     updateData,
     { new: true }
   ).select("-password -otpEmail -otpPassword -tempEmail");
-  
+
   let decryptedPhone = null;
   if (user.phone) {
     decryptedPhone = await Decrypt({ key: user.phone, SECRET_KEY: process.env.SECRET_KEY });
@@ -298,7 +266,7 @@ export const updateProfile = asyncHandler(async (req, res, next) => {
   });
 });
 
-// ==================== Update Password ====================
+// ==================== 9. Update Password ====================
 export const updatePassword = asyncHandler(async (req, res, next) => {
   const { oldPassword, newPassword } = req.body;
 
@@ -306,155 +274,51 @@ export const updatePassword = asyncHandler(async (req, res, next) => {
     return next(new Error("Invalid old password", { cause: 400 }));
   }
 
-  const hash = await Hash({
-    key: newPassword,
-    SALT_ROUNDS: process.env.SALT_ROUNDS,
-  });
+  const hash = await Hash({ key: newPassword, SALT_ROUNDS: process.env.SALT_ROUNDS });
 
   const user = await userModel.findByIdAndUpdate(
     { _id: req.user._id },
     { password: hash, changePasswordAt: Date.now() },
     { new: true }
   ).select("-password -otpEmail -otpPassword -tempEmail");
-  
+
   return res.status(201).json({ msg: "done", user });
 });
 
-// ==================== Share Profile (مع تطبيق الخصوصية) ====================
+// ==================== 10. Share Profile ====================
 export const shareProfile = asyncHandler(async (req, res, next) => {
   const { id } = req.params;
-  const currentUserId = req.user._id.toString();
-  
-  const targetUser = await userModel
-    .findOne({ _id: id, isDeleted: false })
-    .select("-password -otpEmail -otpPassword -tempEmail");
-
-  if (!targetUser) {
-    return next(new Error("User not exists or deleted", { cause: 400 }));
-  }
-
-  // البيانات الأساسية اللي تظهر دايماً
-  const responseUser = {
-    _id: targetUser._id,
-    name: targetUser.name,
-    image: targetUser.image,
-    role: targetUser.role,
-    createdAt: targetUser.createdAt,
-    followersCount: targetUser.followers?.length || 0,
-    followingCount: targetUser.following?.length || 0,
-  };
-
-  // ===== حالة صاحب الحساب نفسه =====
-  if (currentUserId === id) {
-    let decryptedPhone = null;
-    if (targetUser.phone) {
-      decryptedPhone = await Decrypt({ key: targetUser.phone, SECRET_KEY: process.env.SECRET_KEY });
-    }
-    
-    return res.status(200).json({
-      msg: "done",
-      user: {
-        ...responseUser,
-        email: targetUser.email,
-        phone: decryptedPhone,
-        settings: targetUser.settings,
-        confirmed: targetUser.confirmed,
-      },
-    });
-  }
-
-  // ===== حالة مستخدم تاني =====
-  const privacySettings = targetUser.settings?.privacy || {
-    showEmail: false,
-    showPhone: false,
-    showActivity: true,
-  };
-
-  // الإيميل: يظهر فقط لو showEmail = true
-  if (privacySettings.showEmail === true) {
-    responseUser.email = targetUser.email;
-  } else {
-    responseUser.email = null;
-  }
-
-  // رقم التليفون: يظهر فقط لو showPhone = true
-  if (privacySettings.showPhone === true && targetUser.phone) {
-    const decryptedPhone = await Decrypt({ key: targetUser.phone, SECRET_KEY: process.env.SECRET_KEY });
-    responseUser.phone = decryptedPhone;
-  } else {
-    responseUser.phone = null;
-  }
-
-  // النشاط: يظهر فقط لو showActivity = true
-  if (privacySettings.showActivity === true) {
-    responseUser.lastActive = targetUser.updatedAt;
-  } else {
-    responseUser.lastActive = null;
-  }
-
-  return res.status(200).json({ msg: "done", user: responseUser });
+  const user = await userModel.findById(id).select("name email image followers following");
+  if (!user) return next(new Error("User not found", { cause: 404 }));
+  return res.status(200).json({ msg: "done", user });
 });
 
-// ==================== Get My Profile ====================
+// ==================== 11. Get My Profile ====================
 export const getMyProfile = asyncHandler(async (req, res, next) => {
-  const user = await userModel
-    .findById(req.user._id)
-    .select("-password -otpEmail -otpPassword -tempEmail");
+  const user = await userModel.findById(req.user._id).select("-password -otpEmail -otpPassword -tempEmail");
+  if (!user) return next(new Error("User not found", { cause: 404 }));
 
-  if (!user) {
-    return next(new Error("User not found", { cause: 404 }));
-  }
-
-  let decryptedPhone = null;
   if (user.phone) {
-    decryptedPhone = await Decrypt({ key: user.phone, SECRET_KEY: process.env.SECRET_KEY });
+    user.phone = await Decrypt({ key: user.phone, SECRET_KEY: process.env.SECRET_KEY });
   }
 
-  return res.status(200).json({
-    msg: "done",
-    user: {
-      _id: user._id,
-      name: user.name,
-      email: user.email,
-      phone: decryptedPhone,
-      image: user.image,
-      role: user.role,
-      confirmed: user.confirmed,
-      settings: user.settings,
-      createdAt: user.createdAt,
-      updatedAt: user.updatedAt,
-    },
-  });
+  return res.status(200).json({ msg: "done", user });
 });
 
-// ==================== Settings APIs ====================
-
+// ==================== 12. Settings APIs ====================
 export const getSettings = asyncHandler(async (req, res, next) => {
   const user = await userModel.findById(req.user._id).select("settings");
 
   const defaultSettings = {
-    notifications: {
-      push: true,
-      email: true,
-      offers: true,
-      comments: true,
-      likes: true,
-    },
-    privacy: {
-      showEmail: false,
-      showPhone: false,
-      showActivity: true,
-    },
+    notifications: { push: true, email: true, offers: true, comments: true, likes: true },
+    privacy: { showEmail: false, showPhone: false, showActivity: true },
   };
 
-  return res.status(200).json({
-    settings: user?.settings || defaultSettings,
-  });
+  return res.status(200).json({ settings: user?.settings || defaultSettings });
 });
 
 export const updateNotifications = asyncHandler(async (req, res, next) => {
   const { push, email, offers, comments, likes } = req.body;
-
   const currentSettings = req.user.settings || { notifications: {} };
 
   const updatedNotifications = {
@@ -467,23 +331,15 @@ export const updateNotifications = asyncHandler(async (req, res, next) => {
 
   const user = await userModel.findByIdAndUpdate(
     req.user._id,
-    {
-      $set: {
-        "settings.notifications": updatedNotifications,
-      },
-    },
+    { $set: { "settings.notifications": updatedNotifications } },
     { new: true }
   ).select("-password -otpEmail -otpPassword -tempEmail");
 
-  return res.status(200).json({
-    msg: "Notifications settings updated successfully",
-    settings: user.settings,
-  });
+  return res.status(200).json({ msg: "Notifications settings updated", settings: user.settings });
 });
 
 export const updatePrivacy = asyncHandler(async (req, res, next) => {
   const { showEmail, showPhone, showActivity } = req.body;
-
   const currentSettings = req.user.settings || { privacy: {} };
 
   const updatedPrivacy = {
@@ -494,20 +350,14 @@ export const updatePrivacy = asyncHandler(async (req, res, next) => {
 
   const user = await userModel.findByIdAndUpdate(
     req.user._id,
-    {
-      $set: {
-        "settings.privacy": updatedPrivacy,
-      },
-    },
+    { $set: { "settings.privacy": updatedPrivacy } },
     { new: true }
   ).select("-password -otpEmail -otpPassword -tempEmail");
 
-  return res.status(200).json({
-    msg: "Privacy settings updated successfully",
-    settings: user.settings,
-  });
+  return res.status(200).json({ msg: "Privacy settings updated", settings: user.settings });
 });
 
+// ==================== 13. Delete Account ====================
 export const deleteAccount = asyncHandler(async (req, res, next) => {
   const { password } = req.body;
 
@@ -516,23 +366,15 @@ export const deleteAccount = asyncHandler(async (req, res, next) => {
   }
 
   if (req.user.image?.public_id) {
-    try {
-      await cloudinary.uploader.destroy(req.user.image.public_id);
-    } catch (err) {
-      console.log("Error deleting image from cloudinary:", err);
-    }
+    await cloudinary.uploader.destroy(req.user.image.public_id).catch(() => {});
   }
 
   await userModel.findByIdAndDelete(req.user._id);
 
-  return res.status(200).json({
-    msg: "Account deleted successfully",
-    success: true,
-  });
+  return res.status(200).json({ msg: "Account deleted successfully", success: true });
 });
 
-// ==================== Follow System APIs ====================
-
+// ==================== 14. Follow System ====================
 export const followUser = asyncHandler(async (req, res, next) => {
   const { userId } = req.params;
 
@@ -541,9 +383,7 @@ export const followUser = asyncHandler(async (req, res, next) => {
   }
 
   const userToFollow = await userModel.findById(userId);
-  if (!userToFollow) {
-    return next(new Error("User not found", { cause: 404 }));
-  }
+  if (!userToFollow) return next(new Error("User not found", { cause: 404 }));
 
   if (!req.user.following.includes(userId)) {
     req.user.following.push(userId);
@@ -558,20 +398,15 @@ export const followUser = asyncHandler(async (req, res, next) => {
 export const unfollowUser = asyncHandler(async (req, res, next) => {
   const { userId } = req.params;
 
-  req.user.following = req.user.following.filter(
-    (id) => id.toString() !== userId
-  );
-  await userModel.findByIdAndUpdate(userId, {
-    $pull: { followers: req.user._id },
-  });
+  req.user.following = req.user.following.filter(id => id.toString() !== userId);
+  await userModel.findByIdAndUpdate(userId, { $pull: { followers: req.user._id } });
   await req.user.save();
 
   return res.status(200).json({ msg: "Unfollowed successfully" });
 });
 
 export const getFollowers = asyncHandler(async (req, res, next) => {
-  const user = await userModel
-    .findById(req.user._id)
+  const user = await userModel.findById(req.user._id)
     .populate("followers", "name email image settings");
 
   const cleanedFollowers = user.followers.map(follower => {
@@ -588,8 +423,7 @@ export const getFollowers = asyncHandler(async (req, res, next) => {
 });
 
 export const getFollowing = asyncHandler(async (req, res, next) => {
-  const user = await userModel
-    .findById(req.user._id)
+  const user = await userModel.findById(req.user._id)
     .populate("following", "name email image settings");
 
   const cleanedFollowing = user.following.map(following => {

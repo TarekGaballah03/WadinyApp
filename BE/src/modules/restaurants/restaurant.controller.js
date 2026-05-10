@@ -2,20 +2,49 @@
 import { Router } from "express";
 import * as RS from "./restaurant.service.js";
 import * as RV from "./restaurant.validation.js";
-import { authentication, authorization, roles } from "../../middleware/auth.js";
+import { authentication, authorization } from "../../middleware/auth.js";
+import { roles } from "../../DB/models/user.model.js"; // تم التعديل للاستيراد من الموديل مباشرة
 import { validation } from "../../middleware/validation.js";
 import { fileTypes, multerHost } from "../../middleware/multer.js";
 
 const restaurantRouter = Router();
 
+// Middleware لتحويل JSON strings من form-data (مفيد جداً عند التعامل مع الصور والـ Body في نفس الوقت)
+const parseJsonFields = (req, res, next) => {
+  const jsonFields = ["address", "hours", "tags", "cuisine"];
+  jsonFields.forEach((field) => {
+    if (req.body[field] && typeof req.body[field] === "string") {
+      try {
+        req.body[field] = JSON.parse(req.body[field]);
+      } catch (e) {
+        // لو مش JSON صالح، سيبه string والـ validation هيقوم بالواجب
+      }
+    }
+  });
+  // التأكد أن category عبارة عن string
+  if (req.body.category && Array.isArray(req.body.category)) {
+    req.body.category = req.body.category[0] || req.body.category;
+  }
+  next();
+};
+
+// ==================== Public Restaurant Routes (قبل الـ ID) ====================
+
+// عرض كل العروض - تم نقله هنا ليتجنب الـ CastError
+restaurantRouter.get("/offers", validation(RV.getOffersSchema), RS.getOffers);
+
+// عرض كل المطاعم
+restaurantRouter.get("/", validation(RV.getRestaurantsSchema), RS.getRestaurants);
+
 // ==================== Restaurant CRUD Routes ====================
 
-// Create Restaurant (لصاحب المطعم أو الادمن)
+// Create Restaurant
 restaurantRouter.post(
   "/create",
   authentication,
   authorization([roles.restaurant, roles.admin]),
-  multerHost(fileTypes.image).single("image"),
+  multerHost(fileTypes.image).single("attachment"),
+  parseJsonFields,
   validation(RV.createRestaurantSchema),
   RS.createRestaurant
 );
@@ -26,6 +55,7 @@ restaurantRouter.patch(
   authentication,
   authorization([roles.restaurant, roles.admin]),
   multerHost(fileTypes.image).single("image"),
+  parseJsonFields,
   validation(RV.updateRestaurantSchema),
   RS.updateRestaurant
 );
@@ -46,13 +76,9 @@ restaurantRouter.get(
   RS.getMyRestaurant
 );
 
-// ==================== Public Restaurant Routes ====================
-restaurantRouter.get("/", validation(RV.getRestaurantsSchema), RS.getRestaurants);
-restaurantRouter.get("/:id", RS.getRestaurantById);
-
 // ==================== Offer Routes ====================
 
-// Add Offer (لصاحب المطعم أو الادمن بس - ممنوع على اليوزر العادي)
+// Add Offer
 restaurantRouter.post(
   "/offer/add",
   authentication,
@@ -62,10 +88,7 @@ restaurantRouter.post(
   RS.addOffer
 );
 
-// Get All Offers (للجميع - مع فلترة)
-restaurantRouter.get("/offers", validation(RV.getOffersSchema), RS.getOffers);
-
-// Get My Restaurant Offers (لصاحب المطعم يشوف عروضه)
+// Get My Restaurant Offers (لصاحب المطعم)
 restaurantRouter.get(
   "/my-offers",
   authentication,
@@ -73,7 +96,7 @@ restaurantRouter.get(
   RS.getMyRestaurantOffers
 );
 
-// Delete Offer (لصاحب المطعم أو الادمن بس)
+// Delete Offer
 restaurantRouter.delete(
   "/offer/delete/:id",
   authentication,
@@ -83,5 +106,8 @@ restaurantRouter.delete(
 
 // Use Offer (لأي يوزر مسجل)
 restaurantRouter.post("/offer/use", authentication, RS.useOffer);
+
+// ==================== Dynamic Routes (دايماً في الآخر) ====================
+restaurantRouter.get("/:id", RS.getRestaurantById);
 
 export default restaurantRouter;

@@ -314,40 +314,59 @@ export const deleteOffer = asyncHandler(async (req, res, next) => {
   return res.status(200).json({ msg: "Offer deleted successfully" });
 });
 
-// 10. Use Offer (مستخدم استخدم العرض)
+
+// 10. Use Offer (تعديل: منع الاستخدام المتكرر لنفس المستخدم)
 export const useOffer = asyncHandler(async (req, res, next) => {
-  const { code } = req.body;
+    let { code } = req.body;
+    const userId = req.user._id; // الـ ID بتاع اليوزر اللي باعت الـ request
 
-  if (!code) {
-    return next(new Error("Offer code is required", { cause: 400 }));
-  }
+    if (!code) {
+        return next(new Error("Offer code is required", { cause: 400 }));
+    }
 
-  const offer = await offerModel.findOne({ code, isActive: true }).populate("restaurantId", "name location");
-  
-  if (!offer) {
-    return next(new Error("Invalid or expired offer code", { cause: 404 }));
-  }
+    code = code.trim();
 
-  if (offer.validUntil < new Date()) {
-    return next(new Error("This offer has expired", { cause: 400 }));
-  }
+    // البحث عن العرض
+    const offer = await offerModel.findOne({ code, isActive: true });
+    
+    if (!offer) {
+        return next(new Error("Invalid or expired offer code", { cause: 404 }));
+    }
 
-  if (offer.maxUses && offer.usedCount >= offer.maxUses) {
-    return next(new Error("This offer has reached its usage limit", { cause: 400 }));
-  }
+    // 1. التأكد من تاريخ الصلاحية
+    if (offer.validUntil < new Date()) {
+        return next(new Error("This offer has expired", { cause: 400 }));
+    }
 
-  offer.usedCount += 1;
-  await offer.save();
+    // 2. التأكد من الحد الأقصى لاستخدام العرض (العدد الكلي)
+    if (offer.maxUses && offer.usedCount >= offer.maxUses) {
+        return next(new Error("This offer has reached its global usage limit", { cause: 400 }));
+    }
 
-  return res.status(200).json({
-    msg: "Offer applied successfully!",
-    offer: {
-      discount: offer.discount,
-      title: offer.title,
-      description: offer.description,
-      restaurantName: offer.restaurantId?.name,
-    },
-  });
+    // 3. الخطوة الأهم: التأكد إن المستخدم ده مستخدموش قبل كدة
+    // بنشوف هل الـ userId موجود جوه الـ array بتاعة usersUsed
+    const hasUsedBefore = offer.usersUsed.includes(userId);
+    if (hasUsedBefore) {
+        return next(new Error("You have already used this offer once", { cause: 400 }));
+    }
+
+    // 4. تنفيذ العملية: زيادة العدد، وإضافة المستخدم للـ Array
+    offer.usedCount += 1;
+    offer.usersUsed.push(userId); // تسجيل الـ ID بتاع المستخدم
+    
+    await offer.save();
+
+    // Populate عشان نرجع اسم المطعم في الـ response
+    await offer.populate("restaurantId", "name location");
+
+    return res.status(200).json({
+        msg: "Offer applied successfully!",
+        offer: {
+            discount: offer.discount,
+            title: offer.title,
+            restaurantName: offer.restaurantId?.name,
+        },
+    });
 });
 
 // 11. Get My Restaurant Offers (لصاحب المطعم يشوف عروض مطعمه)
