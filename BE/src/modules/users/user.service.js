@@ -10,6 +10,7 @@ import { generalToken } from "../../utils/token/generalToken.js";
 import { decodedToken, tokenTypes } from "../../middleware/auth.js";
 import { OAuth2Client } from "google-auth-library";
 import cloudinary from "../../utils/cloudinary/index.js";
+import { offerModel } from "../../DB/models/offer.model.js";
 
 // --- Helper to select signature based on role ---
 const getSignatures = (role) => {
@@ -444,3 +445,80 @@ export const checkFollowing = asyncHandler(async (req, res, next) => {
   const isFollowing = req.user.following.includes(userId);
   return res.status(200).json({ isFollowing });
 });
+
+
+
+// ==================== 15. Get User Offers (اللي استخدمها واللي متاحة) ====================
+export const getUserOffers = asyncHandler(async (req, res, next) => {
+  const userId = req.user._id;
+  const { type } = req.query; // type = 'used' | 'available' | 'all'
+
+  // 1️⃣ العروض التي استخدمها المستخدم بالفعل
+  const usedOffers = await offerModel.find({
+    usersUsed: userId,
+    isActive: true
+  })
+  .populate("restaurantId", "name location image")
+  .sort({ updatedAt: -1 }); // آخر استخدام أولاً
+
+  // تنسيق العروض المستخدمة
+  const formattedUsedOffers = usedOffers.map(offer => ({
+    _id: offer._id,
+    title: offer.title,
+    description: offer.description,
+    discount: offer.discount,
+    code: offer.code,
+    image: offer.image,
+    restaurantId: offer.restaurantId,
+    validUntil: offer.validUntil,
+    usedCount: offer.usedCount,
+    status: "used",
+    usedAt: offer.updatedAt // وقت آخر استخدام
+  }));
+
+  // 2️⃣ العروض المتاحة (لم يستخدمها المستخدم بعد)
+  const availableOffers = await offerModel.find({
+    isActive: true,
+    validUntil: { $gt: new Date() },
+    usersUsed: { $ne: userId },
+    $or: [
+      { maxUses: null },  // بدون حد أقصى
+      { $expr: { $lt: ["$usedCount", "$maxUses"] } }  // لم يصل للحد الأقصى
+    ]
+  })
+  .populate("restaurantId", "name location image")
+  .sort({ validUntil: 1 }); // الأقرب للانتهاء أولاً
+
+  // تنسيق العروض المتاحة
+  const formattedAvailableOffers = availableOffers.map(offer => ({
+    _id: offer._id,
+    title: offer.title,
+    description: offer.description,
+    discount: offer.discount,
+    code: offer.code,
+    image: offer.image,
+    restaurantId: offer.restaurantId,
+    validUntil: offer.validUntil,
+    usedCount: offer.usedCount,
+    status: "available"
+  }));
+
+  // حسب نوع الطلب
+  let result = {};
+  if (type === 'used') {
+    result = { usedOffers: formattedUsedOffers };
+  } else if (type === 'available') {
+    result = { availableOffers: formattedAvailableOffers };
+  } else {
+    result = { 
+      usedOffers: formattedUsedOffers, 
+      availableOffers: formattedAvailableOffers 
+    };
+  }
+
+  return res.status(200).json({
+    msg: "done",
+    ...result
+  });
+});
+

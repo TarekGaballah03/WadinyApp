@@ -109,4 +109,15 @@ userRouter.get(
 // ==================== Profile Routes ====================
 userRouter.get("/my-profile", authentication, US.getMyProfile);
 
+
+// ==================== User Offers Routes ====================
+// ✅ جلب عروض المستخدم (اللي استخدمها واللي متاحة)
+userRouter.get("/my-offers", authentication, US.getUserOffers);
+
+
+
+
+
+
+
 export default userRouter;
