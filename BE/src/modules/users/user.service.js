@@ -42,7 +42,7 @@ export const signUp = asyncHandler(async (req, res, next) => {
     return next(new Error("Email already exists", { cause: 409 }));
   }
 
-  const hashedPassword = await Hash({ key: password, SALT_ROUNDS: process.env.SALT_ROUNDS });
+  const hashedPassword = await Hash({ key: password, SALT_ROUNDS: parseInt(process.env.SALT_ROUNDS) });
   const encryptedPhone = await Encrypt({ key: phone, SECRET_KEY: process.env.SECRET_KEY });
 
   let image = {};
@@ -83,7 +83,22 @@ export const confirmEmail = asyncHandler(async (req, res, next) => {
   return res.status(200).json({ msg: "Email confirmed successfully" });
 });
 
-// ==================== 3. Login ====================
+// ==================== 3. Resend OTP ====================
+export const resendOtp = asyncHandler(async (req, res, next) => {
+  const { email } = req.body;
+  
+  const user = await userModel.findOne({ email, confirmed: false });
+  
+  if (!user) {
+    return next(new Error("User not found or already confirmed", { cause: 404 }));
+  }
+  
+  eventEmitter.emit("sendEmailConfirmation", { email, id: user._id });
+  
+  return res.status(200).json({ msg: "OTP sent again. Please check your email." });
+});
+
+// ==================== 4. Login ====================
 export const login = asyncHandler(async (req, res, next) => {
   const { email, password } = req.body;
 
@@ -121,7 +136,7 @@ export const login = asyncHandler(async (req, res, next) => {
   });
 });
 
-// ==================== 4. Refresh Token ====================
+// ==================== 5. Refresh Token ====================
 export const refreshToken = asyncHandler(async (req, res, next) => {
   const { authorization } = req.headers;
 
@@ -147,29 +162,31 @@ export const refreshToken = asyncHandler(async (req, res, next) => {
   });
 });
 
-// ==================== 5. Login With Gmail ====================
+// ==================== 6. Login With Gmail (Existing User) ====================
 export const loginWithGmail = asyncHandler(async (req, res, next) => {
-  const { idToken } = req.body;
-  const client = new OAuth2Client();
+  const { code } = req.body;
+  const client = new OAuth2Client(
+    process.env.CLIENT_ID,
+    process.env.CLIENT_SECRET,
+    "postmessage"
+  );
 
+  const { tokens } = await client.getToken(code);
+  
   const ticket = await client.verifyIdToken({
-    idToken,
+    idToken: tokens.id_token,
     audience: process.env.CLIENT_ID,
   });
+
   const { email, email_verified, picture, name } = ticket.getPayload();
 
   let user = await userModel.findOne({ email });
+  
   if (!user) {
-    user = await userModel.create({
-      name, email,
-      confirmed: email_verified,
-      image: { secure_url: picture, public_id: null },
-      provider: providerTypes.google,
-      role: "user",
-    });
+    return next(new Error("No account found with this email. Please sign up first.", { cause: 404 }));
   }
 
-  const { access_sig } = getSignatures(user.role);
+  const { access_sig, refresh_sig } = getSignatures(user.role);
   const tokenPrefix = getTokenPrefix(user.role);
 
   const access_token = await generalToken({
@@ -178,14 +195,81 @@ export const loginWithGmail = asyncHandler(async (req, res, next) => {
     option: { expiresIn: "1d" },
   });
 
+  const refresh_token = await generalToken({
+    payload: { email, id: user._id },
+    SIGNATURE: refresh_sig,
+    option: { expiresIn: "7d" },
+  });
+
   return res.status(200).json({ 
     msg: "Google login successful", 
     access_token,
-    prefix: tokenPrefix 
+    refresh_token,
+    prefix: tokenPrefix,
+    role: user.role
   });
 });
 
-// ==================== 6. Forget Password ====================
+// ==================== 7. Sign Up With Gmail (New User) ====================
+export const googleSignup = asyncHandler(async (req, res, next) => {
+  const { code } = req.body;
+  
+  const client = new OAuth2Client(
+    process.env.CLIENT_ID,
+    process.env.CLIENT_SECRET,
+    "postmessage"
+  );
+
+  const { tokens } = await client.getToken(code);
+  
+  const ticket = await client.verifyIdToken({
+    idToken: tokens.id_token,
+    audience: process.env.CLIENT_ID,
+  });
+
+  const { email, email_verified, picture, name } = ticket.getPayload();
+
+  let user = await userModel.findOne({ email });
+  
+  if (user) {
+    return next(new Error("Email already registered. Please login instead.", { cause: 409 }));
+  }
+
+  user = await userModel.create({
+    name,
+    email,
+    confirmed: email_verified || true,
+    image: { secure_url: picture, public_id: null },
+    provider: providerTypes.google,
+    role: "user",
+    password: null,
+  });
+
+  const { access_sig, refresh_sig } = getSignatures(user.role);
+  const tokenPrefix = getTokenPrefix(user.role);
+
+  const access_token = await generalToken({
+    payload: { email, id: user._id },
+    SIGNATURE: access_sig,
+    option: { expiresIn: "1d" },
+  });
+
+  const refresh_token = await generalToken({
+    payload: { email, id: user._id },
+    SIGNATURE: refresh_sig,
+    option: { expiresIn: "7d" },
+  });
+
+  return res.status(201).json({
+    msg: "Google account created successfully",
+    access_token,
+    refresh_token,
+    prefix: tokenPrefix,
+    role: user.role,
+  });
+});
+
+// ==================== 8. Forget Password ====================
 export const forgetPassword = asyncHandler(async (req, res, next) => {
   const { email } = req.body;
   const user = await userModel.findOne({ email, isDeleted: false });
@@ -195,7 +279,7 @@ export const forgetPassword = asyncHandler(async (req, res, next) => {
   return res.status(200).json({ msg: "OTP sent to your email" });
 });
 
-// ==================== 7. Reset Password ====================
+// ==================== 9. Reset Password ====================
 export const resetPassword = asyncHandler(async (req, res, next) => {
   const { email, code, newPassword } = req.body;
 
@@ -206,7 +290,7 @@ export const resetPassword = asyncHandler(async (req, res, next) => {
     return next(new Error("Invalid code", { cause: 400 }));
   }
 
-  const hash = await Hash({ key: newPassword, SALT_ROUNDS: process.env.SALT_ROUNDS });
+  const hash = await Hash({ key: newPassword, SALT_ROUNDS: parseInt(process.env.SALT_ROUNDS) });
 
   await userModel.updateOne(
     { email },
@@ -216,7 +300,7 @@ export const resetPassword = asyncHandler(async (req, res, next) => {
   return res.status(201).json({ msg: "Password reset successfully" });
 });
 
-// ==================== 8. Update Profile ====================
+// ==================== 10. Update Profile ====================
 export const updateProfile = asyncHandler(async (req, res, next) => {
   const updateData = {};
 
@@ -267,7 +351,7 @@ export const updateProfile = asyncHandler(async (req, res, next) => {
   });
 });
 
-// ==================== 9. Update Password ====================
+// ==================== 11. Update Password ====================
 export const updatePassword = asyncHandler(async (req, res, next) => {
   const { oldPassword, newPassword } = req.body;
 
@@ -275,7 +359,7 @@ export const updatePassword = asyncHandler(async (req, res, next) => {
     return next(new Error("Invalid old password", { cause: 400 }));
   }
 
-  const hash = await Hash({ key: newPassword, SALT_ROUNDS: process.env.SALT_ROUNDS });
+  const hash = await Hash({ key: newPassword, SALT_ROUNDS: parseInt(process.env.SALT_ROUNDS) });
 
   const user = await userModel.findByIdAndUpdate(
     { _id: req.user._id },
@@ -286,7 +370,7 @@ export const updatePassword = asyncHandler(async (req, res, next) => {
   return res.status(201).json({ msg: "done", user });
 });
 
-// ==================== 10. Share Profile ====================
+// ==================== 12. Share Profile ====================
 export const shareProfile = asyncHandler(async (req, res, next) => {
   const { id } = req.params;
   const user = await userModel.findById(id).select("name email image followers following");
@@ -294,7 +378,7 @@ export const shareProfile = asyncHandler(async (req, res, next) => {
   return res.status(200).json({ msg: "done", user });
 });
 
-// ==================== 11. Get My Profile ====================
+// ==================== 13. Get My Profile ====================
 export const getMyProfile = asyncHandler(async (req, res, next) => {
   const user = await userModel.findById(req.user._id).select("-password -otpEmail -otpPassword -tempEmail");
   if (!user) return next(new Error("User not found", { cause: 404 }));
@@ -306,7 +390,7 @@ export const getMyProfile = asyncHandler(async (req, res, next) => {
   return res.status(200).json({ msg: "done", user });
 });
 
-// ==================== 12. Settings APIs ====================
+// ==================== 14. Settings APIs ====================
 export const getSettings = asyncHandler(async (req, res, next) => {
   const user = await userModel.findById(req.user._id).select("settings");
 
@@ -358,7 +442,7 @@ export const updatePrivacy = asyncHandler(async (req, res, next) => {
   return res.status(200).json({ msg: "Privacy settings updated", settings: user.settings });
 });
 
-// ==================== 13. Delete Account ====================
+// ==================== 15. Delete Account ====================
 export const deleteAccount = asyncHandler(async (req, res, next) => {
   const { password } = req.body;
 
@@ -375,7 +459,7 @@ export const deleteAccount = asyncHandler(async (req, res, next) => {
   return res.status(200).json({ msg: "Account deleted successfully", success: true });
 });
 
-// ==================== 14. Follow System ====================
+// ==================== 16. Follow System ====================
 export const followUser = asyncHandler(async (req, res, next) => {
   const { userId } = req.params;
 
@@ -446,22 +530,18 @@ export const checkFollowing = asyncHandler(async (req, res, next) => {
   return res.status(200).json({ isFollowing });
 });
 
-
-
-// ==================== 15. Get User Offers (اللي استخدمها واللي متاحة) ====================
+// ==================== 17. Get User Offers ====================
 export const getUserOffers = asyncHandler(async (req, res, next) => {
   const userId = req.user._id;
-  const { type } = req.query; // type = 'used' | 'available' | 'all'
+  const { type } = req.query;
 
-  // 1️⃣ العروض التي استخدمها المستخدم بالفعل
   const usedOffers = await offerModel.find({
     usersUsed: userId,
     isActive: true
   })
   .populate("restaurantId", "name location image")
-  .sort({ updatedAt: -1 }); // آخر استخدام أولاً
+  .sort({ updatedAt: -1 });
 
-  // تنسيق العروض المستخدمة
   const formattedUsedOffers = usedOffers.map(offer => ({
     _id: offer._id,
     title: offer.title,
@@ -473,23 +553,21 @@ export const getUserOffers = asyncHandler(async (req, res, next) => {
     validUntil: offer.validUntil,
     usedCount: offer.usedCount,
     status: "used",
-    usedAt: offer.updatedAt // وقت آخر استخدام
+    usedAt: offer.updatedAt
   }));
 
-  // 2️⃣ العروض المتاحة (لم يستخدمها المستخدم بعد)
   const availableOffers = await offerModel.find({
     isActive: true,
     validUntil: { $gt: new Date() },
     usersUsed: { $ne: userId },
     $or: [
-      { maxUses: null },  // بدون حد أقصى
-      { $expr: { $lt: ["$usedCount", "$maxUses"] } }  // لم يصل للحد الأقصى
+      { maxUses: null },
+      { $expr: { $lt: ["$usedCount", "$maxUses"] } }
     ]
   })
   .populate("restaurantId", "name location image")
-  .sort({ validUntil: 1 }); // الأقرب للانتهاء أولاً
+  .sort({ validUntil: 1 });
 
-  // تنسيق العروض المتاحة
   const formattedAvailableOffers = availableOffers.map(offer => ({
     _id: offer._id,
     title: offer.title,
@@ -503,7 +581,6 @@ export const getUserOffers = asyncHandler(async (req, res, next) => {
     status: "available"
   }));
 
-  // حسب نوع الطلب
   let result = {};
   if (type === 'used') {
     result = { usedOffers: formattedUsedOffers };
@@ -521,4 +598,3 @@ export const getUserOffers = asyncHandler(async (req, res, next) => {
     ...result
   });
 });
-

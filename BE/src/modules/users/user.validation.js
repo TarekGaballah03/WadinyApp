@@ -12,15 +12,15 @@ export const signUpSchema = {
     gender: joi.string().valid(genderTypes.female, genderTypes.male),
     phone: joi.string().regex(/^01[0125][0-9]{8}$/).required(),
     role: joi.string().valid("user", "admin", "restaurant").optional(),
-
   }).required(),
   file: generalRules.file.required(),
 };
 
+// ⭐ تعديل هنا: change code to otp
 export const confirmEmailSchema = {
   body: joi.object({
     email: generalRules.email.required(),
-    code: joi.string().length(4).required(),
+    otp: joi.string().length(4).required(),  // ✅ otp instead of code
   }).required(),
 };
 
@@ -106,4 +106,11 @@ export const followUserSchema = {
   params: joi.object({
     userId: generalRules.id.required(),
   }),
+};
+
+// ==================== Resend OTP Validation ====================
+export const resendOtpSchema = {
+  body: joi.object({
+    email: generalRules.email.required(),
+  }).required(),
 };

@@ -1,3 +1,4 @@
+// src/components/sidebar/Sidebar.jsx
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import { 
@@ -11,25 +12,22 @@ import {
   FiMessageSquare
 } from "react-icons/fi";
 import { useTheme } from "../../context/ThemeContext";
+import { useAuth } from "../../context/AuthContext"; // ⭐ استخدمي useAuth
 
 export default function Sidebar({ isSidebarOpen, toggleSidebar }) {
   const navigate = useNavigate();
   const { isDarkMode, toggleTheme } = useTheme();
+  const { logout, isAuthenticated } = useAuth(); // ⭐ نستخدم الـ logout من AuthContext
 
   const handleLogout = () => {
-    // مسح بيانات تسجيل الدخول
-    localStorage.removeItem("loggedIn");
-    localStorage.removeItem("currentUserEmail");
-    localStorage.removeItem("rememberMe");
+    // ⭐ استخدمي logout من AuthContext - هيتمسح كل حاجة تلقائي
+    logout();
     
     // إغلاق الـ Sidebar
     toggleSidebar();
     
     // التوجيه لصفحة Home
     navigate("/home");
-    
-    // إعادة تحميل الصفحة عشان يتغير الـ Navbar
-    window.location.reload();
   };
 
   // دالة للتنقل مع إغلاق الـ Sidebar
@@ -160,10 +158,3 @@ export default function Sidebar({ isSidebarOpen, toggleSidebar }) {
     </>
   );
 }
-
-
-
-
-
-
-
