@@ -1,5 +1,4 @@
-// src/services/api.js
-const API_BASE_URL = 'http://localhost:3000'; // شيل /api/v1
+const API_BASE_URL = 'http://localhost:3000';
 
 // دالة مساعدة للـ headers
 const getHeaders = () => {
@@ -16,7 +15,11 @@ const getHeaders = () => {
 const handleResponse = async (response) => {
   const data = await response.json();
   if (!response.ok) {
-    throw new Error(data.message || data.msg || 'Something went wrong');
+    // عرض رسالة الخطأ من السيرفر
+    const errorMessage = data.msg || data.message || 'Something went wrong';
+    const error = new Error(errorMessage);
+    error.data = data;
+    throw error;
   }
   return data;
 };
@@ -72,8 +75,10 @@ export const loginAPI = async (email, password) => {
   return data;
 };
 
-// Google Login API - للمستخدمين الموجودين بالفعل
+// ✅ GOOGLE LOGIN - للمستخدمين الموجودين
 export const googleLoginAPI = async (code) => {
+  console.log('🔵 Sending Google Login code:', code);
+  
   const response = await fetch(`${API_BASE_URL}/users/loginWithGmail`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -81,6 +86,7 @@ export const googleLoginAPI = async (code) => {
   });
   
   const data = await handleResponse(response);
+  console.log('🟢 Google Login Response:', data);
   
   if (data.access_token) {
     localStorage.setItem('access_token', data.access_token);
@@ -88,14 +94,15 @@ export const googleLoginAPI = async (code) => {
     localStorage.setItem('token_prefix', data.prefix);
     localStorage.setItem('userRole', data.role || 'user');
     localStorage.setItem('loggedIn', 'true');
-    localStorage.setItem('currentUserEmail', data.email || '');
   }
   
   return data;
 };
 
-// Google Signup API - للمستخدمين الجدد
+// ✅ GOOGLE SIGNUP - للمستخدمين الجدد
 export const googleSignupAPI = async (code) => {
+  console.log('🔵 Sending Google Signup code:', code);
+  
   const response = await fetch(`${API_BASE_URL}/users/signupWithGmail`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -103,6 +110,7 @@ export const googleSignupAPI = async (code) => {
   });
   
   const data = await handleResponse(response);
+  console.log('🟢 Google Signup Response:', data);
   
   if (data.access_token) {
     localStorage.setItem('access_token', data.access_token);
@@ -113,31 +121,6 @@ export const googleSignupAPI = async (code) => {
   }
   
   return data;
-};
-
-// للتوافق مع الكود القديم (إذا كان يستخدم loginWithGoogleAPI)
-export const loginWithGoogleAPI = async (idTokenOrCode) => {
-  // التحقق إذا كان idToken (قديم) أم code (جديد)
-  if (typeof idTokenOrCode === 'string') {
-    // إذا كان idToken يبدو مثل token (طويل جداً) نستخدم loginWithGmail بالطريقة القديمة
-    if (idTokenOrCode.length > 100 && idTokenOrCode.includes('.')) {
-      const response = await fetch(`${API_BASE_URL}/users/loginWithGmail`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idToken: idTokenOrCode }),
-      });
-      const data = await handleResponse(response);
-      if (data.access_token) {
-        localStorage.setItem('access_token', data.access_token);
-        localStorage.setItem('token_prefix', data.prefix);
-        localStorage.setItem('loggedIn', 'true');
-        localStorage.setItem('userRole', data.role || 'user');
-      }
-      return data;
-    }
-  }
-  // افتراضياً نستخدم googleLoginAPI
-  return googleLoginAPI(idTokenOrCode);
 };
 
 export const refreshTokenAPI = async () => {

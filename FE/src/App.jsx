@@ -1,4 +1,3 @@
-// src/App.jsx
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useState, useEffect, useCallback } from "react";
 import { ThemeProvider } from "./context/ThemeContext";
@@ -37,51 +36,69 @@ import SettingsPage from "./components/settings/SettingsPage";
 import PlacesPage from "./components/places/PlacesPage";
 import PlaceDetailsPage from "./components/places/PlaceDetailsPage";
 
-// ==================== مكون حماية المسارات (معدل - يظهر المودال كـ overlay) ====================
+// ✅ Google OAuth Provider
+import { GoogleOAuthProvider } from '@react-oauth/google';
+
+// ✅ ضعي Client ID حقك هنا
+const GOOGLE_CLIENT_ID = "1001249800736-t71bsv2que8phgq4av6k94lhfmj06umb.apps.googleusercontent.com";
+
+// ==================== مكون حماية المسارات (معدل بالكامل) ====================
 function ProtectedRoute({ children }) {
-  // نقرأ من localStorage مباشرة
-  const [showModal, setShowModal] = useState(false);
-  
-  // دالة للتحقق من المصادقة
-  const checkAuth = () => {
-    const token = localStorage.getItem("access_token");
-    const loggedIn = localStorage.getItem("loggedIn") === "true";
-    return !!(token || loggedIn);
-  };
-  
-  const isAuth = checkAuth();
+  const [isAuth, setIsAuth] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   
   useEffect(() => {
-    console.log("🔒 ProtectedRoute - isAuth:", isAuth);
-    if (!isAuth) {
-      setShowModal(true);
-    } else {
-      setShowModal(false);
-    }
-  }, [isAuth]);
-
-  // ⭐ التغيير المهم: نخلي الصفحة تظهر والمودال يظهر فوقها كـ overlay
-  if (!isAuth) {
-    return (
-      <>
-        {children}  {/* الصفحة تظهر في الخلفية */}
-        <AuthModal 
-          isOpen={showModal} 
-          onClose={() => setShowModal(false)}
-        />
-      </>
-    );
+    // التحقق من المصادقة عند تحميل المكون
+    const checkAuth = () => {
+      const token = localStorage.getItem("access_token");
+      const loggedIn = localStorage.getItem("loggedIn") === "true";
+      const isValid = !!(token && loggedIn);
+      
+      console.log("🔒 ProtectedRoute - Checking auth:", isValid);
+      setIsAuth(isValid);
+      setIsLoading(false);
+      
+      // إذا لم يكن مصادقاً، افتح المودال
+      if (!isValid) {
+        // نستخدم timeout للتأكد من أن المودال يظهر بعد التحميل
+        setTimeout(() => {
+          if (window.openAuthModal) {
+            window.openAuthModal();
+          }
+        }, 100);
+      }
+    };
+    
+    checkAuth();
+    
+    // استماع للتغيرات في localStorage
+    const handleStorageChange = () => {
+      checkAuth();
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
+  
+  if (isLoading) {
+    // عرض شاشة تحميل صغيرة أو nothing
+    return null;
   }
-
+  
+  if (!isAuth) {
+    return null; // لا نعرض أي شيء، المودال هو الذي يظهر
+  }
+  
   return children;
 }
 
 // ==================== مكون الـ App الداخلي ====================
 function AppContent() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const [showModal, setShowModal] = useState(false);
 
   const openAuthModal = useCallback(() => {
+    console.log("🔓 Opening auth modal, isAuthenticated:", isAuthenticated);
     if (!isAuthenticated) {
       setShowModal(true);
     }
@@ -100,6 +117,7 @@ function AppContent() {
 
   return (
     <>
+      {/* AuthModal يظهر كـ Overlay في كل مكان */}
       <AuthModal 
         isOpen={showModal} 
         onClose={closeAuthModal}
@@ -112,7 +130,15 @@ function AppContent() {
         {/* 2. صفحة الـ Home الرئيسية (عامة - مش محمية) */}
         <Route path="/home" element={<HomePage />} />
         
-        {/* 3. المسارات المحمية (Protected Routes) - لازم تسجيل دخول */}
+        {/* 3. صفحات المصادقة (غير محمية) */}
+        <Route path="/login" element={<Login />} />
+        <Route path="/signup" element={<Signup />} />
+        <Route path="/confirm-email" element={<ConfirmEmail />} />
+        <Route path="/forgot" element={<ForgotPassword />} />
+        <Route path="/reset" element={<ResetPassword />} />
+        <Route path="/success" element={<Success />} />
+        
+        {/* 4. المسارات المحمية - تتطلب تسجيل دخول */}
         <Route path="/map" element={
           <ProtectedRoute>
             <MapPage />
@@ -131,7 +157,6 @@ function AppContent() {
           </ProtectedRoute>
         } />
         
-        {/* Social Feed Routes - محمية */}
         <Route path="/social" element={
           <ProtectedRoute>
             <SocialFeed />
@@ -144,14 +169,12 @@ function AppContent() {
           </ProtectedRoute>
         } />
         
-        {/* User Profile Route - محمية */}
         <Route path="/user-profile" element={
           <ProtectedRoute>
             <UserProfilePage />
           </ProtectedRoute>
         } />
         
-        {/* Offers & Recommendations Routes - محمية */}
         <Route path="/offers" element={
           <ProtectedRoute>
             <RecommendationsAndOffers />
@@ -164,28 +187,24 @@ function AppContent() {
           </ProtectedRoute>
         } />
         
-        {/* Mystery Offer Route - محمية */}
         <Route path="/mystery-offer" element={
           <ProtectedRoute>
             <MysteryOfferPage />
           </ProtectedRoute>
         } />
         
-        {/* Details Page Route - محمية */}
         <Route path="/details" element={
           <ProtectedRoute>
             <DetailsPage />
           </ProtectedRoute>
         } />
         
-        {/* Book Table Page Route - محمية */}
         <Route path="/book-table" element={
           <ProtectedRoute>
             <BookTablePage />
           </ProtectedRoute>
         } />
         
-        {/* Profile & Settings Routes - محمية */}
         <Route path="/profile" element={
           <ProtectedRoute>
             <ProfilePage />
@@ -198,7 +217,6 @@ function AppContent() {
           </ProtectedRoute>
         } />
         
-        {/* Places Routes - محمية */}
         <Route path="/places" element={
           <ProtectedRoute>
             <PlacesPage />
@@ -210,14 +228,6 @@ function AppContent() {
             <PlaceDetailsPage />
           </ProtectedRoute>
         } />
-        
-        {/* Auth Routes (غير محمية - عامة) */}
-        <Route path="/login" element={<Login />} />
-        <Route path="/signup" element={<Signup />} />
-        <Route path="/forgot" element={<ForgotPassword />} />
-        <Route path="/reset" element={<ResetPassword />} />
-        <Route path="/success" element={<Success />} />
-        <Route path="/confirm-email" element={<ConfirmEmail />} />
 
         {/* Redirection for unknown paths - يروح للـ home */}
         <Route path="*" element={<Navigate to="/home" replace />} />
@@ -229,17 +239,19 @@ function AppContent() {
 // ==================== مكون الـ App الرئيسي ====================
 function App() {
   return (
-    <ThemeProvider>
-      <AuthProvider>
-        <PlacesProvider>
-          <AppProvider>
-            <BrowserRouter>
-              <AppContent />
-            </BrowserRouter>
-          </AppProvider>
-        </PlacesProvider>
-      </AuthProvider>
-    </ThemeProvider>
+    <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
+      <ThemeProvider>
+        <AuthProvider>
+          <PlacesProvider>
+            <AppProvider>
+              <BrowserRouter>
+                <AppContent />
+              </BrowserRouter>
+            </AppProvider>
+          </PlacesProvider>
+        </AuthProvider>
+      </ThemeProvider>
+    </GoogleOAuthProvider>
   );
 }
 

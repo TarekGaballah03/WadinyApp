@@ -85,52 +85,68 @@ function Login() {
   };
 
   // Google Login
-  const googleLogin = useGoogleLogin({
-    onSuccess: async (tokenResponse) => {
-      setLoading(true);
-      setError("");
-      toast.loading("Connecting to Google...", { id: "google-login" });
+  // Google Login
+const googleLogin = useGoogleLogin({
+  onSuccess: async (tokenResponse) => {
+    console.log("🟡 Google token response:", tokenResponse);
+    
+    if (!tokenResponse.code) {
+      toast.error("Failed to get authorization code from Google");
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+    toast.loading("Connecting to Google...", { id: "google-login" });
+    
+    try {
+      const result = await googleLoginAPI(tokenResponse.code);
+      console.log("🟢 Login result:", result);
       
-      try {
-        const result = await googleLoginAPI(tokenResponse.code);
-        if (result.access_token) {
-          localStorage.setItem("access_token", result.access_token);
-          localStorage.setItem("refresh_token", result.refresh_token);
-          localStorage.setItem("token_prefix", result.prefix);
-          localStorage.setItem("user_role", result.role);
-          localStorage.setItem("loggedIn", "true");
-          
-          toast.success("Google login successful! 🚀", { 
-            id: "google-login",
-            duration: 3000,
-          });
-          
-          setTimeout(() => {
-            window.location.href = "/home";
-          }, 1000);
-        } else {
-          toast.error(result.message || "Google login failed", { id: "google-login" });
-          setLoading(false);
-        }
-      } catch (err) {
-        console.error("Google login error:", err);
-        if (err.message?.includes("No account found") || err.message?.includes("sign up first")) {
-          toast.error("No account found! Please sign up first", { id: "google-login" });
-          setTimeout(() => {
-            navigate("/signup");
-          }, 1500);
-        } else {
-          toast.error(err.message || "Google login failed", { id: "google-login" });
-        }
+      if (result.access_token) {
+        localStorage.setItem("access_token", result.access_token);
+        localStorage.setItem("refresh_token", result.refresh_token);
+        localStorage.setItem("token_prefix", result.prefix);
+        localStorage.setItem("user_role", result.role);
+        localStorage.setItem("loggedIn", "true");
+        
+        toast.success("Google login successful! 🚀", { 
+          id: "google-login",
+          duration: 3000,
+        });
+        
+        setTimeout(() => {
+          window.location.href = "/home";
+        }, 1000);
+      } else {
+        toast.error(result.msg || result.message || "Google login failed", { id: "google-login" });
         setLoading(false);
       }
-    },
-    onError: () => {
-      toast.error("Google login cancelled or failed", { id: "google-login" });
+    } catch (err) {
+      console.error("🔥 Google login error:", err);
+      
+      // رسالة خطأ محددة للمستخدم غير موجود
+      if (err.message?.includes("No account found") || 
+          err.message?.includes("sign up first") ||
+          err.data?.msg?.includes("No account found")) {
+        toast.error("No account found! Please sign up first", { id: "google-login" });
+        setTimeout(() => {
+          navigate("/signup");
+        }, 1500);
+      } else {
+        toast.error(err.message || "Google login failed", { id: "google-login" });
+      }
       setLoading(false);
-    },
-    flow: 'auth-code',
-  });
+    }
+  },
+  onError: (error) => {
+    console.error("🔴 Google OAuth error:", error);
+    toast.error("Google login cancelled or failed", { id: "google-login" });
+    setLoading(false);
+  },
+  flow: 'auth-code',
+});
 
   const getFieldStatus = (field) => {
     const isTouched = touched[field];

@@ -94,52 +94,67 @@ function Signup() {
   }
 };
   // Google Signup
-  const googleSignup = useGoogleLogin({
-    onSuccess: async (tokenResponse) => {
-      setLoading(true);
-      setGeneralError("");
-      toast.loading("Connecting to Google...", { id: "google-signup" });
+  // Google Signup
+const googleSignup = useGoogleLogin({
+  onSuccess: async (tokenResponse) => {
+    console.log("🟡 Google signup token response:", tokenResponse);
+    
+    if (!tokenResponse.code) {
+      toast.error("Failed to get authorization code from Google");
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setGeneralError("");
+    toast.loading("Connecting to Google...", { id: "google-signup" });
+    
+    try {
+      const result = await googleSignupAPI(tokenResponse.code);
+      console.log("🟢 Google signup result:", result);
       
-      try {
-        const result = await googleSignupAPI(tokenResponse.code);
-        if (result.access_token) {
-          localStorage.setItem("access_token", result.access_token);
-          localStorage.setItem("refresh_token", result.refresh_token);
-          localStorage.setItem("token_prefix", result.prefix);
-          localStorage.setItem("user_role", result.role);
-          localStorage.setItem("loggedIn", "true");
-          
-          toast.success("Google account created successfully! 🚀", { 
-            id: "google-signup",
-            duration: 3000,
-          });
-          
-          setTimeout(() => {
-            window.location.href = "/home";
-          }, 1000);
-        } else {
-          toast.error(result.msg || "Google signup failed", { id: "google-signup" });
-          setLoading(false);
-        }
-      } catch (err) {
-        console.error("Google signup error:", err);
-        if (err.message?.includes("already registered") || err.message?.includes("Email already")) {
-          toast.error("Email already registered. Please login instead", { id: "google-signup" });
-          setTimeout(() => {
-            navigate("/login");
-          }, 1500);
-        } else {
-          toast.error(err.message || "Google signup failed", { id: "google-signup" });
-        }
+      if (result.access_token) {
+        localStorage.setItem("access_token", result.access_token);
+        localStorage.setItem("refresh_token", result.refresh_token);
+        localStorage.setItem("token_prefix", result.prefix);
+        localStorage.setItem("user_role", result.role);
+        localStorage.setItem("loggedIn", "true");
+        
+        toast.success("Google account created successfully! 🚀", { 
+          id: "google-signup",
+          duration: 3000,
+        });
+        
+        setTimeout(() => {
+          window.location.href = "/home";
+        }, 1000);
+      } else {
+        toast.error(result.msg || result.message || "Google signup failed", { id: "google-signup" });
         setLoading(false);
       }
-    },
-    onError: () => {
-      toast.error("Google signup cancelled or failed", { id: "google-signup" });
+    } catch (err) {
+      console.error("🔥 Google signup error:", err);
+      
+      if (err.message?.includes("already registered") || 
+          err.message?.includes("Email already") ||
+          err.data?.msg?.includes("already registered")) {
+        toast.error("Email already registered. Please login instead", { id: "google-signup" });
+        setTimeout(() => {
+          navigate("/login");
+        }, 1500);
+      } else {
+        toast.error(err.message || "Google signup failed", { id: "google-signup" });
+      }
       setLoading(false);
-    },
-    flow: 'auth-code',
-  });
+    }
+  },
+  onError: (error) => {
+    console.error("🔴 Google OAuth error:", error);
+    toast.error("Google signup cancelled or failed", { id: "google-signup" });
+    setLoading(false);
+  },
+  flow: 'auth-code',
+});
 
   return (
     <div className={`min-h-screen py-10 px-5 flex flex-col transition-colors duration-300 ${isDarkMode ? 'bg-[#0a0f1a]' : 'bg-white'}`}>
