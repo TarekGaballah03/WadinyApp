@@ -1,4 +1,3 @@
-// src/components/sidebar/Sidebar.jsx
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import { 
@@ -9,32 +8,71 @@ import {
   FiMoon, 
   FiLogOut,
   FiHome,
-  FiMessageSquare
+  FiMessageSquare,
+  FiPlusCircle,
+  FiShoppingBag,
+  FiPieChart,
+  FiShield
 } from "react-icons/fi";
 import { useTheme } from "../../context/ThemeContext";
-import { useAuth } from "../../context/AuthContext"; // ⭐ استخدمي useAuth
+import { useAuth } from "../../context/AuthContext";
 
 export default function Sidebar({ isSidebarOpen, toggleSidebar }) {
   const navigate = useNavigate();
   const { isDarkMode, toggleTheme } = useTheme();
-  const { logout, isAuthenticated } = useAuth(); // ⭐ نستخدم الـ logout من AuthContext
+  const { logout, isAuthenticated, user } = useAuth();
+
+  // جلب الـ role من localStorage أو من user object
+  const userRole = localStorage.getItem('userRole') || user?.role || 'user';
 
   const handleLogout = () => {
-    // ⭐ استخدمي logout من AuthContext - هيتمسح كل حاجة تلقائي
     logout();
-    
-    // إغلاق الـ Sidebar
     toggleSidebar();
-    
-    // التوجيه لصفحة Home
     navigate("/home");
   };
 
-  // دالة للتنقل مع إغلاق الـ Sidebar
   const handleNavigation = (path) => {
     toggleSidebar();
     navigate(path);
   };
+
+  // ==================== تعريف الأزرار حسب الـ Role ====================
+
+  // أزرار أساسية للجميع
+  const baseMenuItems = [
+    { path: "/home", icon: <FiHome size={18} />, label: "Home" },
+    { path: "/social", icon: <FiMessageSquare size={18} />, label: "Social Feed" },
+    { path: "/profile", icon: <FiUser size={18} />, label: "My Profile" },
+    { path: "/settings", icon: <FiSettings size={18} />, label: "Settings" },
+    { path: "/offers", icon: <FiBox size={18} />, label: "Mystery Box" },
+  ];
+
+  // أزرار إضافية لـ Restaurant Owner
+  const restaurantMenuItems = [
+    { path: "/my-restaurant", icon: <FiShoppingBag size={18} />, label: "My Restaurant" },
+    { path: "/my-offers/manage", icon: <FiPlusCircle size={18} />, label: "Manage Offers" },
+  ];
+
+  // أزرار إضافية لـ Admin
+  const adminMenuItems = [
+    { path: "/admin/dashboard", icon: <FiPieChart size={18} />, label: "Admin Panel" },
+    { path: "/admin/restaurants", icon: <FiShield size={18} />, label: "All Restaurants" },
+  ];
+
+  // دمج القوائم حسب الـ role
+  const getMenuItems = () => {
+    let items = [...baseMenuItems];
+    
+    if (userRole === 'restaurant') {
+      items = [...items, ...restaurantMenuItems];
+    } else if (userRole === 'admin') {
+      items = [...items, ...restaurantMenuItems, ...adminMenuItems];
+    }
+    
+    return items;
+  };
+
+  const menuItems = getMenuItems();
 
   return (
     <>
@@ -47,70 +85,35 @@ export default function Sidebar({ isSidebarOpen, toggleSidebar }) {
           : 'bg-white shadow-lg'
       }`}>
         <div className="flex flex-col gap-2">
-          {/* Home */}
-          <div 
-            onClick={() => handleNavigation("/home")}
-            className={`flex items-center gap-3 p-3 rounded-lg text-[15px] cursor-pointer transition-colors ${
-              isDarkMode 
-                ? 'text-white/90 hover:bg-white/10' 
-                : 'text-[#1e3a5f] hover:bg-[#f2f6ff]'
-            }`}
-          >
-            <FiHome className={isDarkMode ? 'text-white/70' : 'text-gray-500'} size={18} />
-            <span>Home</span>
-          </div>
+          
+          {/* عرض الـ Role Badge للمطعم أو الأدمن */}
+          {(userRole === 'restaurant' || userRole === 'admin') && (
+            <div className={`mb-3 p-2 rounded-lg text-center text-xs font-semibold ${
+              userRole === 'admin' 
+                ? 'bg-purple-500/20 text-purple-400' 
+                : 'bg-green-500/20 text-green-400'
+            }`}>
+              {userRole === 'admin' ? '👑 Admin Mode' : 'Owner'}
+            </div>
+          )}
 
-          {/* Social Feed */}
-          <div 
-            onClick={() => handleNavigation("/social")}
-            className={`flex items-center gap-3 p-3 rounded-lg text-[15px] cursor-pointer transition-colors ${
-              isDarkMode 
-                ? 'text-white/90 hover:bg-white/10' 
-                : 'text-[#1e3a5f] hover:bg-[#f2f6ff]'
-            }`}
-          >
-            <FiMessageSquare className={isDarkMode ? 'text-white/70' : 'text-gray-500'} size={18} />
-            <span>Social Feed</span>
-          </div>
-
-          {/* My profile */}
-          <div 
-            onClick={() => handleNavigation("/profile")}
-            className={`flex items-center gap-3 p-3 rounded-lg text-[15px] cursor-pointer transition-colors ${
-              isDarkMode 
-                ? 'text-white/90 hover:bg-white/10' 
-                : 'text-[#1e3a5f] hover:bg-[#f2f6ff]'
-            }`}
-          >
-            <FiUser className={isDarkMode ? 'text-white/70' : 'text-gray-500'} size={18} />
-            <span>My profile</span>
-          </div>
-
-          {/* Settings */}
-          <div 
-            onClick={() => handleNavigation("/settings")}
-            className={`flex items-center gap-3 p-3 rounded-lg text-[15px] cursor-pointer transition-colors ${
-              isDarkMode 
-                ? 'text-white/90 hover:bg-white/10' 
-                : 'text-[#1e3a5f] hover:bg-[#f2f6ff]'
-            }`}
-          >
-            <FiSettings className={isDarkMode ? 'text-white/70' : 'text-gray-500'} size={18} />
-            <span>Settings</span>
-          </div>
-
-          {/* Mystery box - يودي على صفحة العروض والتوصيات */}
-          <div 
-            onClick={() => handleNavigation("/offers")}
-            className={`flex items-center gap-3 p-3 rounded-lg text-[15px] cursor-pointer transition-colors ${
-              isDarkMode 
-                ? 'text-white/90 hover:bg-white/10' 
-                : 'text-[#1e3a5f] hover:bg-[#f2f6ff]'
-            }`}
-          >
-            <FiBox className={isDarkMode ? 'text-white/70' : 'text-gray-500'} size={18} />
-            <span>Mystery box</span>
-          </div>
+          {/* عرض الأزرار ديناميكياً */}
+          {menuItems.map((item, index) => (
+            <div 
+              key={index}
+              onClick={() => handleNavigation(item.path)}
+              className={`flex items-center gap-3 p-3 rounded-lg text-[15px] cursor-pointer transition-colors ${
+                isDarkMode 
+                  ? 'text-white/90 hover:bg-white/10' 
+                  : 'text-[#1e3a5f] hover:bg-[#f2f6ff]'
+              }`}
+            >
+              <span className={isDarkMode ? 'text-white/70' : 'text-gray-500'}>
+                {item.icon}
+              </span>
+              <span>{item.label}</span>
+            </div>
+          ))}
 
           <div className={`h-[1px] my-2 ${
             isDarkMode ? 'bg-white/10' : 'bg-[#e8edf5]'

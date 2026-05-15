@@ -1,7 +1,10 @@
+// src/services/api.js
 const API_BASE_URL = 'http://localhost:3000';
 
+// ==================== Helper Functions ====================
+
 // دالة مساعدة للـ headers
-const getHeaders = () => {
+export const getHeaders = () => {
   const token = localStorage.getItem('access_token');
   const prefix = localStorage.getItem('token_prefix');
   
@@ -12,10 +15,9 @@ const getHeaders = () => {
 };
 
 // دالة للتعامل مع الـ response
-const handleResponse = async (response) => {
+export const handleResponse = async (response) => {
   const data = await response.json();
   if (!response.ok) {
-    // عرض رسالة الخطأ من السيرفر
     const errorMessage = data.msg || data.message || 'Something went wrong';
     const error = new Error(errorMessage);
     error.data = data;
@@ -75,7 +77,6 @@ export const loginAPI = async (email, password) => {
   return data;
 };
 
-// ✅ GOOGLE LOGIN - للمستخدمين الموجودين
 export const googleLoginAPI = async (code) => {
   console.log('🔵 Sending Google Login code:', code);
   
@@ -99,7 +100,6 @@ export const googleLoginAPI = async (code) => {
   return data;
 };
 
-// ✅ GOOGLE SIGNUP - للمستخدمين الجدد
 export const googleSignupAPI = async (code) => {
   console.log('🔵 Sending Google Signup code:', code);
   
@@ -162,7 +162,7 @@ export const resetPasswordAPI = async (email, code, newPassword, cPassword) => {
   return handleResponse(response);
 };
 
-// ==================== User APIs (محمية) ====================
+// ==================== User APIs ====================
 export const getMyProfileAPI = async () => {
   const response = await fetch(`${API_BASE_URL}/users/my-profile`, {
     method: 'GET',
@@ -290,6 +290,185 @@ export const resendOtpAPI = async (email) => {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email }),
+  });
+  return handleResponse(response);
+};
+
+// ==================== Restaurant APIs ====================
+export const getRestaurantsAPI = async (filters = {}) => {
+  const { category, search, minRating, sort, page = 1, limit = 10 } = filters;
+  const params = new URLSearchParams();
+  if (category) params.append('category', category);
+  if (search) params.append('search', search);
+  if (minRating) params.append('minRating', minRating);
+  if (sort) params.append('sort', sort);
+  if (page) params.append('page', page);
+  if (limit) params.append('limit', limit);
+  
+  const response = await fetch(`${API_BASE_URL}/restaurants?${params.toString()}`);
+  return handleResponse(response);
+};
+
+export const getRestaurantByIdAPI = async (id) => {
+  const response = await fetch(`${API_BASE_URL}/restaurants/${id}`);
+  return handleResponse(response);
+};
+
+export const getMyRestaurantAPI = async () => {
+  const response = await fetch(`${API_BASE_URL}/restaurants/my-restaurant`, {
+    method: 'GET',
+    headers: getHeaders(),
+  });
+  return handleResponse(response);
+};
+
+export const createRestaurantAPI = async (restaurantData) => {
+  const formData = new FormData();
+  formData.append('name', restaurantData.name);
+  formData.append('location', restaurantData.location);
+  formData.append('address', JSON.stringify(restaurantData.address));
+  formData.append('category', restaurantData.category);
+  if (restaurantData.cuisine) formData.append('cuisine', JSON.stringify(restaurantData.cuisine));
+  if (restaurantData.hours) formData.append('hours', JSON.stringify(restaurantData.hours));
+  formData.append('phone', restaurantData.phone);
+  formData.append('priceRange', restaurantData.priceRange || '$$');
+  if (restaurantData.tags) formData.append('tags', JSON.stringify(restaurantData.tags));
+  if (restaurantData.attachment) formData.append('attachment', restaurantData.attachment);
+  
+  const response = await fetch(`${API_BASE_URL}/restaurants/create`, {
+    method: 'POST',
+    headers: {
+      'Authorization': getHeaders().Authorization,
+    },
+    body: formData,
+  });
+  return handleResponse(response);
+};
+
+export const updateRestaurantAPI = async (id, restaurantData) => {
+  const formData = new FormData();
+  if (restaurantData.name) formData.append('name', restaurantData.name);
+  if (restaurantData.location) formData.append('location', restaurantData.location);
+  if (restaurantData.address) formData.append('address', JSON.stringify(restaurantData.address));
+  if (restaurantData.category) formData.append('category', restaurantData.category);
+  if (restaurantData.cuisine) formData.append('cuisine', JSON.stringify(restaurantData.cuisine));
+  if (restaurantData.hours) formData.append('hours', JSON.stringify(restaurantData.hours));
+  if (restaurantData.phone) formData.append('phone', restaurantData.phone);
+  if (restaurantData.priceRange) formData.append('priceRange', restaurantData.priceRange);
+  if (restaurantData.tags) formData.append('tags', JSON.stringify(restaurantData.tags));
+  if (restaurantData.image) formData.append('image', restaurantData.image);
+  
+  const response = await fetch(`${API_BASE_URL}/restaurants/update/${id}`, {
+    method: 'PATCH',
+    headers: {
+      'Authorization': getHeaders().Authorization,
+    },
+    body: formData,
+  });
+  return handleResponse(response);
+};
+
+export const deleteRestaurantAPI = async (id) => {
+  const response = await fetch(`${API_BASE_URL}/restaurants/delete/${id}`, {
+    method: 'DELETE',
+    headers: getHeaders(),
+  });
+  return handleResponse(response);
+};
+
+// ==================== Offer APIs ====================
+export const getOffersAPI = async (filters = {}) => {
+  const { restaurantId, isActive, sort, page = 1, limit = 10 } = filters;
+  const params = new URLSearchParams();
+  if (restaurantId) params.append('restaurantId', restaurantId);
+  if (isActive !== undefined) params.append('isActive', isActive);
+  if (sort) params.append('sort', sort);
+  if (page) params.append('page', page);
+  if (limit) params.append('limit', limit);
+  
+  const response = await fetch(`${API_BASE_URL}/restaurants/offers?${params.toString()}`);
+  return handleResponse(response);
+};
+
+export const getMyRestaurantOffersAPI = async (filters = {}) => {
+  const { isActive, sort, page = 1, limit = 10 } = filters;
+  const params = new URLSearchParams();
+  if (isActive !== undefined) params.append('isActive', isActive);
+  if (sort) params.append('sort', sort);
+  if (page) params.append('page', page);
+  if (limit) params.append('limit', limit);
+  
+  const response = await fetch(`${API_BASE_URL}/restaurants/my-offers?${params.toString()}`, {
+    method: 'GET',
+    headers: getHeaders(),
+  });
+  return handleResponse(response);
+};
+
+export const addOfferAPI = async (offerData) => {
+  const formData = new FormData();
+  formData.append('restaurantId', offerData.restaurantId);
+  formData.append('title', offerData.title);
+  formData.append('description', offerData.description);
+  formData.append('discount', offerData.discount);
+  formData.append('validUntil', offerData.validUntil);
+  if (offerData.maxUses) formData.append('maxUses', offerData.maxUses);
+  if (offerData.image) formData.append('image', offerData.image);
+  
+  const response = await fetch(`${API_BASE_URL}/restaurants/offer/add`, {
+    method: 'POST',
+    headers: {
+      'Authorization': getHeaders().Authorization,
+    },
+    body: formData,
+  });
+  return handleResponse(response);
+};
+
+export const deleteOfferAPI = async (offerId) => {
+  const response = await fetch(`${API_BASE_URL}/restaurants/offer/delete/${offerId}`, {
+    method: 'DELETE',
+    headers: getHeaders(),
+  });
+  return handleResponse(response);
+};
+
+export const useOfferAPI = async (code) => {
+  const response = await fetch(`${API_BASE_URL}/restaurants/offer/use`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({ code }),
+  });
+  return handleResponse(response);
+};
+
+// ==================== Review APIs ====================
+export const getReviewsAPI = async (restaurantId) => {
+  const response = await fetch(`${API_BASE_URL}/reviews/${restaurantId}`);
+  return handleResponse(response);
+};
+
+export const addReviewAPI = async (restaurantId, rating, comment) => {
+  const response = await fetch(`${API_BASE_URL}/reviews/add`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({ restaurantId, rating, comment }),
+  });
+  return handleResponse(response);
+};
+
+export const deleteReviewAPI = async (reviewId) => {
+  const response = await fetch(`${API_BASE_URL}/reviews/${reviewId}`, {
+    method: 'DELETE',
+    headers: getHeaders(),
+  });
+  return handleResponse(response);
+};
+
+export const likeReviewAPI = async (reviewId) => {
+  const response = await fetch(`${API_BASE_URL}/reviews/${reviewId}/like`, {
+    method: 'PATCH',
+    headers: getHeaders(),
   });
   return handleResponse(response);
 };

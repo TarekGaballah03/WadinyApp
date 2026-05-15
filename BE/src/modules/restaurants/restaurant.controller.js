@@ -3,7 +3,7 @@ import { Router } from "express";
 import * as RS from "./restaurant.service.js";
 import * as RV from "./restaurant.validation.js";
 import { authentication, authorization } from "../../middleware/auth.js";
-import { roles } from "../../DB/models/user.model.js"; // تم التعديل للاستيراد من الموديل مباشرة
+import { roles } from "../../DB/models/user.model.js";
 import { validation } from "../../middleware/validation.js";
 import { fileTypes, multerHost } from "../../middleware/multer.js";
 
@@ -28,10 +28,18 @@ const parseJsonFields = (req, res, next) => {
   next();
 };
 
-// ==================== Public Restaurant Routes (قبل الـ ID) ====================
+// ==================== Public Restaurant Routes (specific routes أولاً) ====================
 
-// عرض كل العروض - تم نقله هنا ليتجنب الـ CastError
+// عرض كل العروض
 restaurantRouter.get("/offers", validation(RV.getOffersSchema), RS.getOffers);
+
+// جلب مطعم المستخدم الحالي (لصاحب المطعم) - لازم يكون قبل /:id
+restaurantRouter.get(
+  "/my-restaurant",
+  authentication,
+  authorization([roles.restaurant, roles.admin]),
+  RS.getMyRestaurant
+);
 
 // عرض كل المطاعم
 restaurantRouter.get("/", validation(RV.getRestaurantsSchema), RS.getRestaurants);
@@ -66,14 +74,6 @@ restaurantRouter.delete(
   authentication,
   authorization([roles.restaurant, roles.admin]),
   RS.deleteRestaurant
-);
-
-// Get My Restaurant (لصاحب المطعم)
-restaurantRouter.get(
-  "/my-restaurant",
-  authentication,
-  authorization([roles.restaurant, roles.admin]),
-  RS.getMyRestaurant
 );
 
 // ==================== Offer Routes ====================

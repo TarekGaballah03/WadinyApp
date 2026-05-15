@@ -4,6 +4,7 @@ import Sidebar from '../sidebar/Sidebar'
 import Navbar from '../navbar/Navbar'
 import { useTheme } from '../../context/ThemeContext'
 import { useAppContext } from '../../store/AppContext'
+import { getOffersAPI } from '../../services/restaurantAPI'
 
 // استيراد الصورة
 import mysteryImage from '../../assets/image2.png'
@@ -213,10 +214,30 @@ export default function RecommendationsAndOffers() {
   const { posts } = useAppContext()
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [isLoggedIn, setIsLoggedIn] = useState(false)
+  
+  // State للعروض الحقيقية من الـ API
+  const [apiOffers, setApiOffers] = useState([])
+  const [loading, setLoading] = useState(true)
 
   React.useEffect(() => {
     setIsLoggedIn(localStorage.getItem("loggedIn") === "true")
+    fetchOffers()
   }, [])
+
+  // جلب العروض من الـ API
+  const fetchOffers = async () => {
+    setLoading(true)
+    try {
+      const result = await getOffersAPI({ isActive: true, sort: 'newest' })
+      if (result.offers) {
+        setApiOffers(result.offers)
+      }
+    } catch (error) {
+      console.error('Error fetching offers:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen)
 
@@ -230,12 +251,12 @@ export default function RecommendationsAndOffers() {
     }
   }
 
-  // ✅ دالة للتعامل مع الضغط على Plus Button - تودي لـ NewPostPage مع تحديد نوع Offer
+  // دالة للتعامل مع الضغط على Plus Button - تودي لـ NewPostPage مع تحديد نوع Offer
   const handleCreateOffer = () => {
     navigate('/social/new-post', { state: { defaultPostType: 'offer' } })
   }
 
-  // ✅ جلب البوستات اللي نوعها offer من الـ Context
+  // عروض من البوستات (المستخدمين)
   const offerPostsFromFeed = posts
     .filter(post => post.type === 'offer')
     .map(post => ({
@@ -250,81 +271,55 @@ export default function RecommendationsAndOffers() {
       imageUrl: post.postImage || "https://images.unsplash.com/photo-1554118811-1e0d58224f24?w=400&h=200&fit=crop",
       description: post.body,
       author: post.author,
-      originalPost: post
+      originalPost: post,
+      isFromAPI: false
     }))
 
-  const restaurants = [
-    {
-      title: "The Daily Grind",
-      rating: "4.7",
-      ratingStars: 4.7,
-      distance: "0.3 miles away",
-      statusColor: "#46B400",
-      statusText: "Open",
-      offerText: "20% off all drinks",
-      imageUrl: "https://images.unsplash.com/photo-1554118811-1e0d58224f24?w=400&h=200&fit=crop"
-    },
-    {
-      title: "Urban Eats",
-      rating: "4.5",
-      ratingStars: 4.5,
-      distance: "0.8 miles away",
-      statusColor: "#C8A507",
-      statusText: "Busy",
-      offerText: "Buy one get one free",
-      imageUrl: "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=400&h=200&fit=crop"
-    },
-    {
-      title: "The Rooftop Bar",
-      rating: "4.8",
-      ratingStars: 4.8,
-      distance: "1.2 miles away",
-      statusColor: "#46B400",
-      statusText: "Open",
-      offerText: "Happy hour 5–7 PM",
-      imageUrl: "https://images.unsplash.com/photo-1559339352-11d035aa65de?w=400&h=200&fit=crop"
-    },
-    {
-      title: "Sushi Master",
-      rating: "4.9",
-      ratingStars: 4.9,
-      distance: "0.5 miles away",
-      statusColor: "#46B400",
-      statusText: "Open",
-      offerText: "15% off sushi rolls",
-      imageUrl: "https://images.unsplash.com/photo-1579871494447-9811cf80d66c?w=400&h=200&fit=crop"
-    },
-    {
-      title: "Burger House",
-      rating: "4.6",
-      ratingStars: 4.6,
-      distance: "0.9 miles away",
-      statusColor: "#C8A507",
-      statusText: "Busy",
-      offerText: "Buy 1 Get 1 Free",
-      imageUrl: "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=400&h=200&fit=crop"
-    },
-    {
-      title: "Pizza Heaven",
-      rating: "4.8",
-      ratingStars: 4.8,
-      distance: "1.5 miles away",
-      statusColor: "#46B400",
-      statusText: "Open",
-      offerText: "30% off large pizzas",
-      imageUrl: "https://images.unsplash.com/photo-1513104890138-7c749659a591?w=400&h=200&fit=crop"
-    }
-  ]
+  // تحويل العروض من الـ API لصيغة الـ RestaurantCard
+  const apiOffersFormatted = apiOffers.map(offer => ({
+    id: offer._id,
+    title: offer.title,
+    rating: "4.5",
+    ratingStars: 4.5,
+    distance: offer.restaurantId?.location || "Near you",
+    statusColor: "#46B400",
+    statusText: "Active",
+    offerText: offer.discount,
+    imageUrl: offer.image?.secure_url || "https://images.unsplash.com/photo-1554118811-1e0d58224f24?w=400&h=200&fit=crop",
+    description: offer.description,
+    restaurantName: offer.restaurantId?.name,
+    code: offer.code,
+    validUntil: offer.validUntil,
+    restaurantId: offer.restaurantId?._id,
+    isFromAPI: true
+  }))
 
-  // ✅ دمج عروض المستخدمين مع عروض المطاعم
-  const allOffers = [...offerPostsFromFeed, ...restaurants]
+  // دمج العروض من البوستات ومن الـ API
+  const allOffers = [...offerPostsFromFeed, ...apiOffersFormatted]
 
-  // ✅ دالة للتعامل مع الضغط على عرض (سواء من مستخدم أو مطعم)
+  // دالة للتعامل مع الضغط على عرض
   const handleOfferClick = (offer) => {
-    if (offer.originalPost) {
+    if (offer.isFromAPI) {
+      // عرض من الـ API (من صاحب مطعم)
+      handleProtectedNavigation('/details', {
+        type: 'offer',
+        data: {
+          title: offer.title,
+          type: 'offer',
+          offer: offer.offerText,
+          description: offer.description,
+          location: offer.restaurantName || 'Restaurant',
+          image: offer.imageUrl,
+          validUntil: offer.validUntil ? new Date(offer.validUntil).toLocaleDateString() : 'Limited time',
+          code: offer.code,
+          isRestaurantOffer: true,
+          restaurantId: offer.restaurantId
+        }
+      })
+    } else if (offer.originalPost) {
       // عرض من مستخدم
-      handleProtectedNavigation('/details', { 
-        type: 'offer', 
+      handleProtectedNavigation('/details', {
+        type: 'offer',
         data: {
           title: offer.title,
           type: 'offer',
@@ -339,9 +334,9 @@ export default function RecommendationsAndOffers() {
         }
       })
     } else {
-      // عرض من مطعم
-      handleProtectedNavigation('/details', { 
-        type: 'offer', 
+      // عرض من المطاعم الثابتة (mock data - كاحتياطي)
+      handleProtectedNavigation('/details', {
+        type: 'offer',
         data: {
           title: offer.title,
           type: 'offer',
@@ -354,6 +349,18 @@ export default function RecommendationsAndOffers() {
         }
       })
     }
+  }
+
+  // إذا كان في حالة تحميل
+  if (loading) {
+    return (
+      <div className={`min-h-screen flex items-center justify-center ${isDarkMode ? 'bg-[#0a0f1a]' : 'bg-gray-50'}`}>
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-[#2B86ED] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className={isDarkMode ? 'text-white' : 'text-gray-600'}>Loading offers...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -384,7 +391,7 @@ export default function RecommendationsAndOffers() {
           />
         </div>
 
-        {/* ✅ عرض جميع العروض (من المستخدمين والمطاعم) */}
+        {/* عرض جميع العروض (من المستخدمين والمطاعم ومن الـ API) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
           {allOffers.map((offer, index) => (
             <RestaurantCard
@@ -403,7 +410,7 @@ export default function RecommendationsAndOffers() {
           ))}
         </div>
 
-        {/* ✅ رسالة لو مفيش عروض */}
+        {/* رسالة لو مفيش عروض */}
         {allOffers.length === 0 && (
           <div className={`text-center py-12 rounded-2xl transition-all duration-300 ${
             isDarkMode ? 'bg-white/5' : 'bg-white'
@@ -437,7 +444,7 @@ export default function RecommendationsAndOffers() {
         </div>
       </div>
 
-      {/* ✅ Plus Button - يودي لـ NewPostPage مع تحديد نوع Offer */}
+      {/* Plus Button - يودي لـ NewPostPage مع تحديد نوع Offer */}
       <button
         onClick={handleCreateOffer}
         className="fixed bottom-6 right-6 w-14 h-14 rounded-full bg-green-500 text-white shadow-lg hover:bg-green-600 transition-all hover:scale-105 flex items-center justify-center z-50"

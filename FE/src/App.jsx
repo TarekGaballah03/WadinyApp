@@ -36,31 +36,45 @@ import SettingsPage from "./components/settings/SettingsPage";
 import PlacesPage from "./components/places/PlacesPage";
 import PlaceDetailsPage from "./components/places/PlaceDetailsPage";
 
+// Restaurant Pages (جديدة)
+import MyRestaurantPage from "./components/restaurant/MyRestaurantPage";
+import ManageOffersPage from "./components/restaurant/ManageOffersPage";
+
 // ✅ Google OAuth Provider
 import { GoogleOAuthProvider } from '@react-oauth/google';
 
 // ✅ ضعي Client ID حقك هنا
 const GOOGLE_CLIENT_ID = "1001249800736-t71bsv2que8phgq4av6k94lhfmj06umb.apps.googleusercontent.com";
 
-// ==================== مكون حماية المسارات (معدل بالكامل) ====================
-function ProtectedRoute({ children }) {
+// ==================== مكون حماية المسارات مع Role ====================
+function ProtectedRoute({ children, requiredRole }) {
   const [isAuth, setIsAuth] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [hasRole, setHasRole] = useState(true);
   
   useEffect(() => {
-    // التحقق من المصادقة عند تحميل المكون
     const checkAuth = () => {
       const token = localStorage.getItem("access_token");
       const loggedIn = localStorage.getItem("loggedIn") === "true";
+      const userRole = localStorage.getItem("userRole");
       const isValid = !!(token && loggedIn);
       
-      console.log("🔒 ProtectedRoute - Checking auth:", isValid);
       setIsAuth(isValid);
+      
+      // التحقق من الـ role المطلوب
+      if (requiredRole && isValid) {
+        if (requiredRole === 'restaurant' && userRole !== 'restaurant' && userRole !== 'admin') {
+          setHasRole(false);
+        } else if (requiredRole === 'admin' && userRole !== 'admin') {
+          setHasRole(false);
+        } else {
+          setHasRole(true);
+        }
+      }
+      
       setIsLoading(false);
       
-      // إذا لم يكن مصادقاً، افتح المودال
       if (!isValid) {
-        // نستخدم timeout للتأكد من أن المودال يظهر بعد التحميل
         setTimeout(() => {
           if (window.openAuthModal) {
             window.openAuthModal();
@@ -71,22 +85,24 @@ function ProtectedRoute({ children }) {
     
     checkAuth();
     
-    // استماع للتغيرات في localStorage
     const handleStorageChange = () => {
       checkAuth();
     };
     
     window.addEventListener('storage', handleStorageChange);
     return () => window.removeEventListener('storage', handleStorageChange);
-  }, []);
+  }, [requiredRole]);
   
   if (isLoading) {
-    // عرض شاشة تحميل صغيرة أو nothing
     return null;
   }
   
   if (!isAuth) {
-    return null; // لا نعرض أي شيء، المودال هو الذي يظهر
+    return null;
+  }
+  
+  if (!hasRole) {
+    return <Navigate to="/home" replace />;
   }
   
   return children;
@@ -226,6 +242,19 @@ function AppContent() {
         <Route path="/place/:id" element={
           <ProtectedRoute>
             <PlaceDetailsPage />
+          </ProtectedRoute>
+        } />
+
+        {/* 5. مسارات Restaurant Owner (محمية بالـ role) */}
+        <Route path="/my-restaurant" element={
+          <ProtectedRoute requiredRole="restaurant">
+            <MyRestaurantPage />
+          </ProtectedRoute>
+        } />
+        
+        <Route path="/my-offers/manage" element={
+          <ProtectedRoute requiredRole="restaurant">
+            <ManageOffersPage />
           </ProtectedRoute>
         } />
 

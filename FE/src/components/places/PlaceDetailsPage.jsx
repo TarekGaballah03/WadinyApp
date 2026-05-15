@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { usePlaces } from './PlacesContext';
 import { useTheme } from '../../context/ThemeContext';
@@ -32,6 +32,18 @@ const DeleteIcon = () => (
   </svg>
 );
 
+// دالة للحصول على الـ user ID الحالي
+const getCurrentUserId = () => {
+  const token = localStorage.getItem('access_token');
+  if (!token) return null;
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return payload.id || payload._id || null;
+  } catch (e) {
+    return null;
+  }
+};
+
 export default function PlaceDetailsPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -43,19 +55,103 @@ export default function PlaceDetailsPage() {
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState('');
+  const [place, setPlace] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [currentUserId, setCurrentUserId] = useState(null);
 
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
-  const place = getPlaceById(parseInt(id));
-  const userRating = getUserRatingForPlace(parseInt(id));
-  
-  const hasUserReviewed = place.reviews?.some(review => review.userName === 'You');
-  const userReview = place.reviews?.find(review => review.userName === 'You');
+
+  // جلب الـ user ID
+  useEffect(() => {
+    const userId = getCurrentUserId();
+    setCurrentUserId(userId);
+    console.log('✅ Current User ID:', userId);
+  }, []);
+
+  // جلب المكان عند تحميل الصفحة
+  useEffect(() => {
+    const fetchPlace = async () => {
+      setLoading(true);
+      try {
+        const result = await getPlaceById(id);
+        console.log('📍 Place ownerId:', result?.ownerId);
+        console.log('👤 Current User ID:', currentUserId);
+        setPlace(result);
+      } catch (error) {
+        console.error('Error fetching place:', error);
+        setPlace(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    if (id) {
+      fetchPlace();
+    }
+  }, [id, getPlaceById, currentUserId]);
+
+  const userRating = place ? getUserRatingForPlace(place.id) : 0;
+  const hasUserReviewed = place?.reviews?.some(review => review.userName === 'You');
+  const userReview = place?.reviews?.find(review => review.userName === 'You');
   const userReviewId = userReview?.id;
+  
+  // ✅ التحقق إذا كان المستخدم هو صاحب المطعم
+  const isOwner = place?.ownerId && currentUserId && 
+    String(place.ownerId) === String(currentUserId);
+  const canReview = !hasUserReviewed && !isOwner && !loading;
+
+  // ✅ منع التقييم للمطاعم الوهمية
+  const isMockPlace = !place?.isFromAPI;
+
+  console.log('🔍 isOwner:', isOwner);
+  console.log('🔍 canReview:', canReview);
+  console.log('🔍 isMockPlace:', isMockPlace);
+  console.log('🔍 place.ownerId:', place?.ownerId);
+  console.log('🔍 currentUserId:', currentUserId);
+
+  if (loading) {
+    return (
+      <div className={`min-h-screen flex items-center justify-center ${isDarkMode ? 'bg-[#0a0f1a]' : 'bg-gray-50'}`}>
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-[#2B86ED] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className={isDarkMode ? 'text-white' : 'text-gray-600'}>Loading place details...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!place) {
     return (
       <div className={`min-h-screen flex items-center justify-center ${isDarkMode ? 'bg-[#0a0f1a]' : 'bg-gray-50'}`}>
-        <p className={isDarkMode ? 'text-white' : 'text-[#1a3650]'}>Place not found</p>
+        <div className="text-center">
+          <p className={isDarkMode ? 'text-white' : 'text-[#1a3650]'}>Place not found</p>
+          <button
+            onClick={() => navigate('/places')}
+            className="mt-4 px-6 py-2 rounded-xl bg-[#2B86ED] text-white"
+          >
+            Back to Places
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ✅ إذا كان المكان وهمي، منع التقييم
+  if (isMockPlace) {
+    return (
+      <div className={`min-h-screen flex items-center justify-center ${isDarkMode ? 'bg-[#0a0f1a]' : 'bg-gray-50'}`}>
+        <div className="text-center">
+          <p className={isDarkMode ? 'text-white' : 'text-[#1a3650]'}>Demo Place</p>
+          <p className={`text-sm mt-2 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+            Reviews are only available for real restaurants
+          </p>
+          <button
+            onClick={() => navigate('/places')}
+            className="mt-4 px-6 py-2 rounded-xl bg-[#2B86ED] text-white"
+          >
+            Back to Places
+          </button>
+        </div>
       </div>
     );
   }
@@ -85,26 +181,49 @@ export default function PlaceDetailsPage() {
       return;
     }
 
-    addPlaceReview(place.id, rating, comment);
-    
-    await Swal.fire({
-      title: 'Review Added!',
-      text: 'Thank you for your feedback',
-      icon: 'success',
-      confirmButtonColor: '#2B86ED',
-      background: isDarkMode ? '#1a1a2e' : '#fff',
-      color: isDarkMode ? '#fff' : '#000',
-      timer: 2000,
-      showConfirmButton: true,
-    });
+    try {
+      // ✅ تأكد من صحة الـ ID
+      if (!place.id || place.id.length !== 24) {
+        throw new Error('Invalid restaurant ID. Please refresh the page.');
+      }
 
-    setRating(0);
-    setComment('');
-    setShowReviewModal(false);
+      console.log('✅ Submitting review for place ID:', place.id);
+      
+      await addPlaceReview(place.id, rating, comment);
+      
+      await Swal.fire({
+        title: 'Review Added!',
+        text: 'Thank you for your feedback',
+        icon: 'success',
+        confirmButtonColor: '#2B86ED',
+        background: isDarkMode ? '#1a1a2e' : '#fff',
+        color: isDarkMode ? '#fff' : '#000',
+        timer: 2000,
+        showConfirmButton: true,
+      });
+
+      setRating(0);
+      setComment('');
+      setShowReviewModal(false);
+      
+      const updatedPlace = await getPlaceById(id);
+      setPlace(updatedPlace);
+    } catch (error) {
+      let errorMessage = error.message || 'Failed to add review';
+      if (error.message?.includes('duplicate')) {
+        errorMessage = 'You have already reviewed this restaurant. You can edit your existing review.';
+      }
+      await Swal.fire({
+        title: 'Error',
+        text: errorMessage,
+        icon: 'error',
+        confirmButtonColor: '#2B86ED',
+      });
+    }
   };
 
-  const handleDeleteReview = async () => {
-    if (!userReviewId) return;
+  const handleDeleteReview = async (reviewId) => {
+    if (!reviewId) return;
     
     const result = await Swal.fire({
       title: 'Delete Review?',
@@ -120,17 +239,29 @@ export default function PlaceDetailsPage() {
     });
 
     if (result.isConfirmed) {
-      deletePlaceReview(place.id, userReviewId);
-      await Swal.fire({
-        title: 'Deleted!',
-        text: 'Your review has been deleted.',
-        icon: 'success',
-        confirmButtonColor: '#2B86ED',
-        background: isDarkMode ? '#1a1a2e' : '#fff',
-        color: isDarkMode ? '#fff' : '#000',
-        timer: 1500,
-        showConfirmButton: true,
-      });
+      try {
+        await deletePlaceReview(place.id, reviewId);
+        await Swal.fire({
+          title: 'Deleted!',
+          text: 'Your review has been deleted.',
+          icon: 'success',
+          confirmButtonColor: '#2B86ED',
+          background: isDarkMode ? '#1a1a2e' : '#fff',
+          color: isDarkMode ? '#fff' : '#000',
+          timer: 1500,
+          showConfirmButton: true,
+        });
+        
+        const updatedPlace = await getPlaceById(id);
+        setPlace(updatedPlace);
+      } catch (error) {
+        await Swal.fire({
+          title: 'Error',
+          text: error.message || 'Failed to delete review',
+          icon: 'error',
+          confirmButtonColor: '#2B86ED',
+        });
+      }
     }
   };
 
@@ -149,8 +280,8 @@ export default function PlaceDetailsPage() {
           />
           <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
           
-          {/* زر Add Review */}
-          {!hasUserReviewed && (
+          {/* زر Add Review - يظهر فقط للمستخدمين العاديين (ليس صاحب المطعم) */}
+          {canReview && !isMockPlace && (
             <button
               onClick={() => setShowReviewModal(true)}
               className={`absolute top-5 right-5 backdrop-blur-md px-4 py-2.5 rounded-2xl hover:scale-105 transition-all flex items-center gap-2 font-bold ${
@@ -164,6 +295,15 @@ export default function PlaceDetailsPage() {
               </svg>
               <span>Add Review</span>
             </button>
+          )}
+          
+          {/* Badge للمالك */}
+          {isOwner && (
+            <div className="absolute top-5 left-5">
+              <span className="px-3 py-1 rounded-full text-xs font-semibold bg-green-500 text-white shadow-lg">
+                👑 Your Restaurant
+              </span>
+            </div>
           )}
           
           <div className="absolute bottom-4 left-4 right-4">
@@ -235,13 +375,13 @@ export default function PlaceDetailsPage() {
                   </svg>
                   <div>
                     <p className={`text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Phone Number</p>
-                    <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>+20 123 456 7890</p>
+                    <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>{place.phone || '+20 123 456 7890'}</p>
                   </div>
                 </div>
               </div>
 
               <div className="flex flex-wrap gap-2 pt-4">
-                {place.tags.map((tag, idx) => (
+                {place.tags?.map((tag, idx) => (
                   <span key={idx} className={`px-3 py-1 rounded-full text-xs ${isDarkMode ? 'bg-white/10 text-gray-300' : 'bg-gray-100 text-gray-600'}`}>
                     #{tag}
                   </span>
@@ -287,7 +427,9 @@ export default function PlaceDetailsPage() {
           <div className="space-y-4">
             {place.reviews?.length > 0 ? (
               place.reviews.map(review => {
-                const isUserReview = review.userName === 'You';
+                const isUserReview = review.userId && currentUserId && 
+                  String(review.userId) === String(currentUserId);
+                
                 return (
                   <div key={review.id} className={`p-4 md:p-5 rounded-2xl shadow-sm transition-all duration-300 ${
                     isDarkMode ? 'bg-white/10 backdrop-blur-md border border-white/10' : 'bg-white shadow-md'
@@ -310,7 +452,7 @@ export default function PlaceDetailsPage() {
                             </div>
                             {isUserReview && (
                               <button
-                                onClick={handleDeleteReview}
+                                onClick={() => handleDeleteReview(review.id)}
                                 className="text-red-500 hover:text-red-700 transition p-1"
                                 title="Delete your review"
                               >
@@ -340,7 +482,7 @@ export default function PlaceDetailsPage() {
         )}
       </div>
 
-      {/* Review Modal - جلاسي في الدارك مود */}
+      {/* Review Modal */}
       {showReviewModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/40 backdrop-blur-md" onClick={() => setShowReviewModal(false)} />

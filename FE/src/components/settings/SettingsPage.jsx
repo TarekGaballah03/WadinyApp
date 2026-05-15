@@ -3,17 +3,27 @@ import { useNavigate } from 'react-router-dom'
 import Sidebar from '../sidebar/Sidebar'
 import Navbar from '../navbar/Navbar'
 import { useTheme } from '../../context/ThemeContext'
-import { useAppContext } from '../../store/AppContext'
 import Swal from 'sweetalert2'
+import {
+  getMyProfileAPI,
+  updateProfileAPI,
+  getSettingsAPI,
+  updateNotificationsAPI,
+  updatePrivacyAPI,
+  deleteAccountAPI,
+  updatePasswordAPI
+} from '../../services/settingsAPI'
 
 export default function SettingsPage() {
   const navigate = useNavigate()
   const { isDarkMode, toggleTheme } = useTheme()
-  const { userAvatar, updateUserAvatar } = useAppContext()
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
+  const [isChangingPassword, setIsChangingPassword] = useState(false)
   const [previewImage, setPreviewImage] = useState(null)
+  const [loading, setLoading] = useState(true)
   
+  // إعدادات الإشعارات
   const [notifications, setNotifications] = useState({
     push: true,
     email: true,
@@ -22,73 +32,199 @@ export default function SettingsPage() {
     likes: true
   })
 
+  // إعدادات الخصوصية
   const [privacy, setPrivacy] = useState({
     showEmail: false,
     showPhone: false,
     showActivity: true
   })
 
+  // بيانات المستخدم
   const [userInfo, setUserInfo] = useState({
     name: '',
     email: '',
     phone: '',
-    bio: ''
+    gender: 'male'
   })
 
+  // بيانات تغيير كلمة المرور
+  const [passwordData, setPasswordData] = useState({
+    oldPassword: '',
+    newPassword: '',
+    cPassword: ''
+  })
+
+  // جلب البيانات من السيرفر عند تحميل الصفحة
   useEffect(() => {
-    const savedName = localStorage.getItem('userName') || 'John Doe'
-    const savedEmail = localStorage.getItem('currentUserEmail') || 'user@example.com'
-    const savedPhone = localStorage.getItem('userPhone') || '+20 123 456 7890'
-    const savedBio = localStorage.getItem('userBio') || 'Travel enthusiast | Coffee lover | Exploring hidden gems'
-    
-    setUserInfo({
-      name: savedName,
-      email: savedEmail,
-      phone: savedPhone,
-      bio: savedBio
-    })
-    
-    const savedAvatar = localStorage.getItem('userAvatar')
-    if (savedAvatar) {
-      setPreviewImage(savedAvatar)
-    }
+    fetchUserData()
   }, [])
+
+  const fetchUserData = async () => {
+    setLoading(true)
+    try {
+      // جلب بيانات الملف الشخصي
+      const profileResult = await getMyProfileAPI()
+      if (profileResult.user) {
+        const user = profileResult.user
+        setUserInfo({
+          name: user.name || '',
+          email: user.email || '',
+          phone: user.phone || '',
+          gender: user.gender || 'male'
+        })
+        
+        if (user.image?.secure_url) {
+          setPreviewImage(user.image.secure_url)
+          localStorage.setItem('userAvatar', user.image.secure_url)
+        }
+      }
+      
+      // جلب إعدادات المستخدم
+      const settingsResult = await getSettingsAPI()
+      if (settingsResult.settings) {
+        if (settingsResult.settings.notifications) {
+          setNotifications(settingsResult.settings.notifications)
+        }
+        if (settingsResult.settings.privacy) {
+          setPrivacy(settingsResult.settings.privacy)
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching user data:', error)
+      Swal.fire({
+        icon: 'error',
+        title: 'Error',
+        text: error.message || 'Failed to load user data',
+        confirmButtonColor: '#2B86ED',
+        background: isDarkMode ? '#1a1a2e' : '#fff',
+        color: isDarkMode ? '#fff' : '#000',
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen)
 
-  const toggleNotification = (key) => {
-    setNotifications({ ...notifications, [key]: !notifications[key] })
-  }
-
-  const togglePrivacy = (key) => {
-    setPrivacy({ ...privacy, [key]: !privacy[key] })
-  }
-
-  const handleAvatarChange = (e) => {
-    const file = e.target.files[0]
-    if (file) {
-      const reader = new FileReader()
-      reader.onloadend = () => {
-        const avatarResult = reader.result
-        setPreviewImage(avatarResult)
-        localStorage.setItem('userAvatar', avatarResult)
-        updateUserAvatar(avatarResult)
-        Swal.fire({
-          icon: 'success',
-          title: 'Avatar Updated!',
-          text: 'Your profile picture has been changed.',
-          confirmButtonColor: '#2B86ED',
-          background: isDarkMode ? '#1a1a2e' : '#fff',
-          color: isDarkMode ? '#fff' : '#000',
-          timer: 1500,
-          showConfirmButton: false
-        })
-      }
-      reader.readAsDataURL(file)
+  // تحديث إعدادات الإشعارات
+  const toggleNotification = async (key) => {
+    const newValue = !notifications[key]
+    const updatedNotifications = { ...notifications, [key]: newValue }
+    setNotifications(updatedNotifications)
+    
+    try {
+      await updateNotificationsAPI({ [key]: newValue })
+      Swal.fire({
+        icon: 'success',
+        title: 'Updated!',
+        text: 'Notification settings saved',
+        toast: true,
+        position: 'top-end',
+        showConfirmButton: false,
+        timer: 1500,
+        background: isDarkMode ? '#1a1a2e' : '#fff',
+        color: isDarkMode ? '#fff' : '#000',
+      })
+    } catch (error) {
+      console.error('Error updating notifications:', error)
+      // إعادة القيمة القديمة في حالة الخطأ
+      setNotifications(notifications)
+      Swal.fire({
+        icon: 'error',
+        title: 'Error',
+        text: error.message || 'Failed to update settings',
+        confirmButtonColor: '#2B86ED',
+      })
     }
   }
 
-  // ✅ دالة حذف الصورة
+  // تحديث إعدادات الخصوصية
+  const togglePrivacy = async (key) => {
+    const newValue = !privacy[key]
+    const updatedPrivacy = { ...privacy, [key]: newValue }
+    setPrivacy(updatedPrivacy)
+    
+    try {
+      await updatePrivacyAPI({ [key]: newValue })
+      Swal.fire({
+        icon: 'success',
+        title: 'Updated!',
+        text: 'Privacy settings saved',
+        toast: true,
+        position: 'top-end',
+        showConfirmButton: false,
+        timer: 1500,
+        background: isDarkMode ? '#1a1a2e' : '#fff',
+        color: isDarkMode ? '#fff' : '#000',
+      })
+    } catch (error) {
+      console.error('Error updating privacy:', error)
+      setPrivacy(privacy)
+      Swal.fire({
+        icon: 'error',
+        title: 'Error',
+        text: error.message || 'Failed to update privacy settings',
+        confirmButtonColor: '#2B86ED',
+      })
+    }
+  }
+
+  // تغيير الصورة الشخصية
+  const handleAvatarChange = async (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+    
+    // التحقق من حجم الصورة (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      Swal.fire({
+        icon: 'error',
+        title: 'File too large',
+        text: 'Image must be less than 5MB',
+        confirmButtonColor: '#2B86ED',
+      })
+      return
+    }
+    
+    // عرض معاينة مؤقتة
+    const reader = new FileReader()
+    reader.onloadend = () => {
+      setPreviewImage(reader.result)
+    }
+    reader.readAsDataURL(file)
+    
+    try {
+      const result = await updateProfileAPI({ attachment: file })
+      if (result.user?.image?.secure_url) {
+        setPreviewImage(result.user.image.secure_url)
+        localStorage.setItem('userAvatar', result.user.image.secure_url)
+      }
+      Swal.fire({
+        icon: 'success',
+        title: 'Avatar Updated!',
+        text: 'Your profile picture has been changed.',
+        confirmButtonColor: '#2B86ED',
+        background: isDarkMode ? '#1a1a2e' : '#fff',
+        color: isDarkMode ? '#fff' : '#000',
+        timer: 1500,
+        showConfirmButton: false
+      })
+    } catch (error) {
+      console.error('Error updating avatar:', error)
+      // إعادة الصورة القديمة
+      const profileResult = await getMyProfileAPI()
+      if (profileResult.user?.image?.secure_url) {
+        setPreviewImage(profileResult.user.image.secure_url)
+      }
+      Swal.fire({
+        icon: 'error',
+        title: 'Error',
+        text: error.message || 'Failed to update profile picture',
+        confirmButtonColor: '#2B86ED',
+      })
+    }
+  }
+
+  // حذف الصورة الشخصية
   const handleRemoveAvatar = async () => {
     const result = await Swal.fire({
       title: 'Remove profile picture?',
@@ -104,43 +240,129 @@ export default function SettingsPage() {
     })
 
     if (result.isConfirmed) {
-      setPreviewImage(null)
-      localStorage.removeItem('userAvatar')
-      updateUserAvatar(null)
+      try {
+        await updateProfileAPI({ removeImage: true })
+        setPreviewImage(null)
+        localStorage.removeItem('userAvatar')
+        Swal.fire({
+          title: 'Removed!',
+          text: 'Your profile picture has been removed.',
+          icon: 'success',
+          confirmButtonColor: '#2B86ED',
+          background: isDarkMode ? '#1a1a2e' : '#fff',
+          color: isDarkMode ? '#fff' : '#000',
+          timer: 1500,
+          showConfirmButton: false,
+        })
+      } catch (error) {
+        console.error('Error removing avatar:', error)
+        Swal.fire({
+          icon: 'error',
+          title: 'Error',
+          text: error.message || 'Failed to remove profile picture',
+          confirmButtonColor: '#2B86ED',
+        })
+      }
+    }
+  }
+
+  // تحديث بيانات الملف الشخصي
+  const handleSaveProfile = async () => {
+    try {
+      const updateData = {
+        name: userInfo.name,
+        phone: userInfo.phone,
+        gender: userInfo.gender
+      }
+      
+      const result = await updateProfileAPI(updateData)
+      
+      if (result.user) {
+        setUserInfo({
+          name: result.user.name || userInfo.name,
+          email: result.user.email || userInfo.email,
+          phone: result.user.phone || userInfo.phone,
+          gender: result.user.gender || userInfo.gender
+        })
+        
+        localStorage.setItem('userName', result.user.name)
+        if (result.user.phone) localStorage.setItem('userPhone', result.user.phone)
+      }
+      
+      setIsEditing(false)
       Swal.fire({
-        title: 'Removed!',
-        text: 'Your profile picture has been removed.',
         icon: 'success',
+        title: 'Profile Updated!',
+        text: 'Your information has been saved.',
         confirmButtonColor: '#2B86ED',
         background: isDarkMode ? '#1a1a2e' : '#fff',
         color: isDarkMode ? '#fff' : '#000',
         timer: 1500,
-        showConfirmButton: false,
+        showConfirmButton: false
+      })
+    } catch (error) {
+      console.error('Error updating profile:', error)
+      Swal.fire({
+        icon: 'error',
+        title: 'Error',
+        text: error.message || 'Failed to update profile',
+        confirmButtonColor: '#2B86ED',
       })
     }
   }
 
-  const handleInputChange = (e) => {
-    setUserInfo({ ...userInfo, [e.target.name]: e.target.value })
+  // تغيير كلمة المرور
+  const handleChangePassword = async () => {
+    if (passwordData.newPassword !== passwordData.cPassword) {
+      Swal.fire({
+        icon: 'error',
+        title: 'Error',
+        text: 'New passwords do not match',
+        confirmButtonColor: '#2B86ED',
+      })
+      return
+    }
+    
+    if (passwordData.newPassword.length < 8) {
+      Swal.fire({
+        icon: 'error',
+        title: 'Error',
+        text: 'Password must be at least 8 characters',
+        confirmButtonColor: '#2B86ED',
+      })
+      return
+    }
+    
+    try {
+      await updatePasswordAPI(
+        passwordData.oldPassword,
+        passwordData.newPassword,
+        passwordData.cPassword
+      )
+      
+      setPasswordData({ oldPassword: '', newPassword: '', cPassword: '' })
+      setIsChangingPassword(false)
+      
+      Swal.fire({
+        icon: 'success',
+        title: 'Password Changed!',
+        text: 'Your password has been updated successfully.',
+        confirmButtonColor: '#2B86ED',
+        background: isDarkMode ? '#1a1a2e' : '#fff',
+        color: isDarkMode ? '#fff' : '#000',
+      })
+    } catch (error) {
+      console.error('Error changing password:', error)
+      Swal.fire({
+        icon: 'error',
+        title: 'Error',
+        text: error.message || 'Failed to change password',
+        confirmButtonColor: '#2B86ED',
+      })
+    }
   }
 
-  const handleSaveProfile = () => {
-    localStorage.setItem('userName', userInfo.name)
-    localStorage.setItem('userPhone', userInfo.phone)
-    localStorage.setItem('userBio', userInfo.bio)
-    setIsEditing(false)
-    Swal.fire({
-      icon: 'success',
-      title: 'Profile Updated!',
-      text: 'Your information has been saved.',
-      confirmButtonColor: '#2B86ED',
-      background: isDarkMode ? '#1a1a2e' : '#fff',
-      color: isDarkMode ? '#fff' : '#000',
-      timer: 1500,
-      showConfirmButton: false
-    })
-  }
-
+  // تسجيل الخروج
   const handleLogout = () => {
     Swal.fire({
       title: 'Logout?',
@@ -155,17 +377,24 @@ export default function SettingsPage() {
       color: isDarkMode ? '#fff' : '#000',
     }).then((result) => {
       if (result.isConfirmed) {
+        localStorage.removeItem('access_token')
+        localStorage.removeItem('refresh_token')
+        localStorage.removeItem('token_prefix')
+        localStorage.removeItem('userRole')
         localStorage.setItem('loggedIn', 'false')
         navigate('/login')
       }
     })
   }
 
-  const handleClearData = () => {
-    Swal.fire({
+  // حذف الحساب
+  const handleDeleteAccount = async () => {
+    const result = await Swal.fire({
       title: 'Delete Account?',
-      text: 'This action cannot be undone! All your data will be permanently deleted.',
+      text: 'This action cannot be undone! Enter your password to confirm.',
       icon: 'warning',
+      input: 'password',
+      inputPlaceholder: 'Enter your password',
       showCancelButton: true,
       confirmButtonColor: '#d33',
       cancelButtonColor: '#3085d6',
@@ -173,8 +402,15 @@ export default function SettingsPage() {
       cancelButtonText: 'Cancel',
       background: isDarkMode ? '#1a1a2e' : '#fff',
       color: isDarkMode ? '#fff' : '#000',
-    }).then((result) => {
-      if (result.isConfirmed) {
+      inputAttributes: {
+        autocapitalize: 'off',
+        autocorrect: 'off'
+      }
+    })
+
+    if (result.isConfirmed && result.value) {
+      try {
+        await deleteAccountAPI(result.value)
         localStorage.clear()
         Swal.fire({
           icon: 'success',
@@ -186,8 +422,27 @@ export default function SettingsPage() {
         }).then(() => {
           navigate('/login')
         })
+      } catch (error) {
+        console.error('Error deleting account:', error)
+        Swal.fire({
+          icon: 'error',
+          title: 'Error',
+          text: error.message || 'Failed to delete account. Please check your password.',
+          confirmButtonColor: '#2B86ED',
+        })
       }
-    })
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className={`min-h-screen flex items-center justify-center ${isDarkMode ? 'bg-[#0a0f1a]' : 'bg-[#f8fafd]'}`}>
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-[#2B86ED] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className={isDarkMode ? 'text-white' : 'text-gray-600'}>Loading settings...</p>
+        </div>
+      </div>
+    )
   }
 
   // Toggle Button Component
@@ -248,7 +503,7 @@ export default function SettingsPage() {
                   <img src={previewImage} alt="Profile" className="w-20 h-20 rounded-full object-cover border-3 border-[#2B86ED]" />
                 ) : (
                   <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center">
-                    <span className="text-3xl text-white">{userInfo.name.charAt(0).toUpperCase()}</span>
+                    <span className="text-3xl text-white">{userInfo.name?.charAt(0)?.toUpperCase() || 'U'}</span>
                   </div>
                 )}
                 <label className="absolute bottom-0 right-0 p-1.5 rounded-full bg-[#2B86ED] text-white cursor-pointer hover:bg-[#1a6edb] transition shadow-lg">
@@ -274,7 +529,7 @@ export default function SettingsPage() {
                     type="text" 
                     name="name"
                     value={userInfo.name}
-                    onChange={handleInputChange}
+                    onChange={(e) => setUserInfo({ ...userInfo, name: e.target.value })}
                     className={`w-full px-4 py-2 rounded-xl border focus:outline-none focus:ring-2 focus:ring-[#2B86ED] ${isDarkMode ? 'bg-white/10 border-white/20 text-white' : 'bg-gray-50 border-gray-200 text-gray-900'}`}
                   />
                 </div>
@@ -285,32 +540,32 @@ export default function SettingsPage() {
                     name="email"
                     value={userInfo.email}
                     disabled  
-                    onChange={handleInputChange}
-                    className={`w-full px-4 py-2 rounded-xl border focus:outline-none focus:ring-2 focus:ring-[#2B86ED] ${isDarkMode ? 'bg-white/10 border-white/20 text-white' : 'bg-gray-50 border-gray-200 text-gray-900'}`}
+                    className={`w-full px-4 py-2 rounded-xl border ${isDarkMode ? 'bg-white/5 border-white/10 text-gray-400 cursor-not-allowed' : 'bg-gray-100 border-gray-200 text-gray-500 cursor-not-allowed'}`}
                   />
+                  <p className={`text-xs mt-1 ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>Email cannot be changed</p>
                 </div>
                 <div>
                   <label className={`block text-sm font-medium mb-1 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Phone Number</label>
                   <input 
                     type="tel" 
                     name="phone"
-                    value={userInfo.phone}
-                    onChange={handleInputChange}
+                    value={userInfo.phone || ''}
+                    onChange={(e) => setUserInfo({ ...userInfo, phone: e.target.value })}
                     className={`w-full px-4 py-2 rounded-xl border focus:outline-none focus:ring-2 focus:ring-[#2B86ED] ${isDarkMode ? 'bg-white/10 border-white/20 text-white' : 'bg-gray-50 border-gray-200 text-gray-900'}`}
                   />
                 </div>
                 <div>
-                  <label className={`block text-sm font-medium mb-1 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Bio</label>
-                  <textarea 
-                    name="bio"
-                    value={userInfo.bio}
-                    onChange={handleInputChange}
-                    rows="3"
+                  <label className={`block text-sm font-medium mb-1 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Gender</label>
+                  <select
+                    value={userInfo.gender}
+                    onChange={(e) => setUserInfo({ ...userInfo, gender: e.target.value })}
                     className={`w-full px-4 py-2 rounded-xl border focus:outline-none focus:ring-2 focus:ring-[#2B86ED] ${isDarkMode ? 'bg-white/10 border-white/20 text-white' : 'bg-gray-50 border-gray-200 text-gray-900'}`}
-                  />
+                  >
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
+                  </select>
                 </div>
                 
-                {/* ✅ زر حذف الصورة في وضع التعديل */}
                 {previewImage && (
                   <button
                     onClick={handleRemoveAvatar}
@@ -340,13 +595,55 @@ export default function SettingsPage() {
                 </div>
                 <div className="flex justify-between items-center py-2">
                   <span className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Phone</span>
-                  <span className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{userInfo.phone}</span>
+                  <span className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{userInfo.phone || 'Not provided'}</span>
                 </div>
-                <div className="py-2">
-                  <span className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Bio</span>
-                  <p className={`text-sm mt-1 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{userInfo.bio}</p>
+                <div className="flex justify-between items-center py-2">
+                  <span className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Gender</span>
+                  <span className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>{userInfo.gender === 'male' ? 'Male' : 'Female'}</span>
                 </div>
                 <button onClick={() => setIsEditing(true)} className="w-full mt-3 py-2 rounded-xl bg-[#2B86ED]/10 text-[#2B86ED] font-medium hover:bg-[#2B86ED]/20 transition">Edit Profile</button>
+                
+                {/* Change Password Button */}
+                <button 
+                  onClick={() => setIsChangingPassword(!isChangingPassword)} 
+                  className="w-full py-2 rounded-xl bg-gray-500/10 text-gray-600 dark:text-gray-400 font-medium hover:bg-gray-500/20 transition"
+                >
+                  {isChangingPassword ? 'Cancel' : 'Change Password'}
+                </button>
+                
+                {/* Change Password Form */}
+                {isChangingPassword && (
+                  <div className="mt-4 p-4 rounded-xl border border-gray-200 dark:border-white/10 space-y-3">
+                    <h4 className={`font-medium ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>Change Password</h4>
+                    <input
+                      type="password"
+                      placeholder="Current Password"
+                      value={passwordData.oldPassword}
+                      onChange={(e) => setPasswordData({ ...passwordData, oldPassword: e.target.value })}
+                      className={`w-full px-4 py-2 rounded-xl border focus:outline-none focus:ring-2 focus:ring-[#2B86ED] ${isDarkMode ? 'bg-white/10 border-white/20 text-white' : 'bg-gray-50 border-gray-200 text-gray-900'}`}
+                    />
+                    <input
+                      type="password"
+                      placeholder="New Password"
+                      value={passwordData.newPassword}
+                      onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
+                      className={`w-full px-4 py-2 rounded-xl border focus:outline-none focus:ring-2 focus:ring-[#2B86ED] ${isDarkMode ? 'bg-white/10 border-white/20 text-white' : 'bg-gray-50 border-gray-200 text-gray-900'}`}
+                    />
+                    <input
+                      type="password"
+                      placeholder="Confirm New Password"
+                      value={passwordData.cPassword}
+                      onChange={(e) => setPasswordData({ ...passwordData, cPassword: e.target.value })}
+                      className={`w-full px-4 py-2 rounded-xl border focus:outline-none focus:ring-2 focus:ring-[#2B86ED] ${isDarkMode ? 'bg-white/10 border-white/20 text-white' : 'bg-gray-50 border-gray-200 text-gray-900'}`}
+                    />
+                    <button
+                      onClick={handleChangePassword}
+                      className="w-full py-2 rounded-xl bg-[#2B86ED] text-white font-medium hover:bg-[#1a6edb] transition"
+                    >
+                      Update Password
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -409,6 +706,13 @@ export default function SettingsPage() {
                 <p className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>Get weekly newsletters and updates</p>
               </div>
               <ToggleButton enabled={notifications.email} onChange={() => toggleNotification('email')} />
+            </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className={`text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Offers & Deals</p>
+                <p className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>Get notified about special offers</p>
+              </div>
+              <ToggleButton enabled={notifications.offers} onChange={() => toggleNotification('offers')} />
             </div>
             <div className="flex items-center justify-between">
               <div>
@@ -477,8 +781,7 @@ export default function SettingsPage() {
             <button onClick={handleLogout} className="w-full py-2.5 rounded-xl bg-red-500/10 text-red-500 font-medium hover:bg-red-500/20 transition">
               Logout
             </button>
-            {/* ✅ زر Delete Account باللون الأحمر البارز */}
-            <button onClick={handleClearData} className="w-full py-2.5 rounded-xl bg-red-500 text-white font-medium hover:bg-red-600 transition shadow-md">
+            <button onClick={handleDeleteAccount} className="w-full py-2.5 rounded-xl bg-red-500 text-white font-medium hover:bg-red-600 transition shadow-md">
               Delete Account
             </button>
           </div>

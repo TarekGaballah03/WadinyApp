@@ -16,29 +16,42 @@ const recalculateRestaurantRating = async (restaurantId) => {
   return { avgRating, totalReviews };
 };
 
-// ==================== Add Review ====================
+// ==================== Add or Update Review ====================
 export const addReview = asyncHandler(async (req, res, next) => {
   const { restaurantId, rating, comment } = req.body;
+
+  // ✅ التحقق من صحة الـ ID
+  if (!restaurantId || restaurantId.length !== 24) {
+    return next(new Error("Invalid restaurant ID", { cause: 400 }));
+  }
 
   const restaurant = await restaurantModel.findOne({ _id: restaurantId, isDeleted: false });
   if (!restaurant) return next(new Error("Restaurant not found", { cause: 404 }));
 
-  // Check if user already reviewed (unique index enforces this, but give a friendly message)
-  const existingReview = await reviewModel.findOne({
+  // ✅ البحث عن review موجود
+  let review = await reviewModel.findOne({
     restaurantId,
     userId: req.user._id,
     isDeleted: false,
   });
-  if (existingReview) {
-    return next(new Error("You have already reviewed this restaurant", { cause: 400 }));
+  
+  let isUpdate = false;
+  
+  if (review) {
+    // ✅ تحديث الـ review الموجود
+    review.rating = rating;
+    review.comment = comment;
+    await review.save();
+    isUpdate = true;
+  } else {
+    // ✅ إنشاء review جديد
+    review = await reviewModel.create({
+      restaurantId,
+      userId: req.user._id,
+      rating,
+      comment,
+    });
   }
-
-  const review = await reviewModel.create({
-    restaurantId,
-    userId: req.user._id,
-    rating,
-    comment,
-  });
 
   // Recalculate restaurant stats
   const stats = await recalculateRestaurantRating(restaurantId);
@@ -47,9 +60,10 @@ export const addReview = asyncHandler(async (req, res, next) => {
 
   return res.status(201).json({
     success: true,
-    msg: "Review added",
+    msg: isUpdate ? "Review updated successfully" : "Review added successfully",
     review: populated,
     restaurantStats: stats,
+    isUpdate: isUpdate
   });
 });
 

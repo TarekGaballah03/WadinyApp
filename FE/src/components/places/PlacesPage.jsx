@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react'; // ✅ أضف useRef
 import { useNavigate } from 'react-router-dom';
 import { usePlaces } from './PlacesContext';
 import { useTheme } from '../../context/ThemeContext';
@@ -15,14 +15,23 @@ const Star = ({ filled }) => (
 export default function PlacesPage() {
   const navigate = useNavigate();
   const { isDarkMode } = useTheme();
-  const { places, getUserRatingForPlace } = usePlaces();
+  const { places, loading, getUserRatingForPlace, refreshPlaces } = usePlaces();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
+  const hasFetched = useRef(false); // ✅ منع الجلب المتكرر
 
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
 
-  const categories = ['all', 'cafe', 'restaurant'];
+  // ✅ جلب المطاعم مرة واحدة فقط
+  useEffect(() => {
+    if (!hasFetched.current && refreshPlaces) {
+      hasFetched.current = true;
+      refreshPlaces();
+    }
+  }, [refreshPlaces]);
+
+  const categories = ['all', 'cafe', 'restaurant', 'fastfood', 'bakery', 'juicebar'];
 
   const filteredPlaces = places.filter(place => {
     const matchesSearch = place.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -34,6 +43,18 @@ export default function PlacesPage() {
   const handlePlaceClick = (placeId) => {
     navigate(`/place/${placeId}`);
   };
+
+  // حالة التحميل
+  if (loading && places.length === 0) {
+    return (
+      <div className={`min-h-screen flex items-center justify-center ${isDarkMode ? 'bg-[#0a0f1a]' : 'bg-gray-50'}`}>
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-[#2B86ED] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className={isDarkMode ? 'text-white' : 'text-gray-600'}>Loading places...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`min-h-screen transition-colors duration-300 ${isDarkMode ? 'bg-[#0a0f1a]' : 'bg-[#f8fafd]'}`}>
@@ -82,6 +103,13 @@ export default function PlacesPage() {
               {cat.charAt(0).toUpperCase() + cat.slice(1)}
             </button>
           ))}
+        </div>
+
+        {/* عرض عدد المطاعم الموجودة */}
+        <div className="mb-4 text-right">
+          <span className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+            Showing {filteredPlaces.length} of {places.length} places
+          </span>
         </div>
 
         {/* Places Grid */}
@@ -149,7 +177,7 @@ export default function PlacesPage() {
           })}
         </div>
 
-        {filteredPlaces.length === 0 && (
+        {filteredPlaces.length === 0 && !loading && (
           <div className={`text-center py-16 rounded-2xl ${isDarkMode ? 'bg-white/5' : 'bg-white'}`}>
             <p className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}>No places found</p>
           </div>
