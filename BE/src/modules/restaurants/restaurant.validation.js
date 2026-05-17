@@ -1,4 +1,3 @@
-// src/modules/restaurants/restaurant.validation.js
 import joi from "joi";
 import { generalRules } from "../../utils/generalRules/index.js";
 
@@ -15,14 +14,14 @@ export const createRestaurantSchema = {
         lng: joi.number(),
       }),
     }).required(),
-    category: joi.string().valid("cafe", "restaurant", "fastfood", "bakery", "juicebar"),
+    category: joi.string().valid("cafe", "restaurant", "fastfood", "bakery", "juicebar").required(),
     cuisine: joi.array().items(joi.string()),
     hours: joi.object({
       open: joi.string(),
       close: joi.string(),
     }),
     phone: joi.string().regex(/^01[0125][0-9]{8}$/).required(),
-    priceRange: joi.string().valid("$", "$$", "$$$", "$$$$"),
+    priceRange: joi.string().valid("$", "$", "$$", "$$"),
     tags: joi.array().items(joi.string()),
   }).required(),
   file: generalRules.file.required(),
@@ -48,7 +47,7 @@ export const updateRestaurantSchema = {
       close: joi.string(),
     }),
     phone: joi.string().regex(/^01[0125][0-9]{8}$/),
-    priceRange: joi.string().valid("$", "$$", "$$$", "$$$$"),
+    priceRange: joi.string().valid("$", "$", "$$", "$$"),
     tags: joi.array().items(joi.string()),
   }).required(),
   file: generalRules.file,

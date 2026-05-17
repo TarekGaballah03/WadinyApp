@@ -1,14 +1,19 @@
+// src/components/resetpassword/ResetPassword.jsx
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTheme } from "../../context/ThemeContext";
+import { resetPasswordAPI } from "../../services/api";
 
 function ResetPassword() {
   const navigate = useNavigate();
   const { isDarkMode } = useTheme();
+  const [email, setEmail] = useState("");
+  const [code, setCode] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const hasLength = password.length >= 8;
   const hasNumber = /\d/.test(password);
@@ -16,31 +21,47 @@ function ResetPassword() {
   const passwordsMatch = password && confirmPassword && password === confirmPassword;
 
   const isResetDisabled =
-    !password || !confirmPassword || !hasLength || !hasNumber || !hasSpecial || !passwordsMatch;
+    !email || !code || !password || !confirmPassword || !hasLength || !hasNumber || !hasSpecial || !passwordsMatch || loading;
 
-  const handleReset = () => {
+  const handleReset = async () => {
     setError("");
     setSuccess("");
+    setLoading(true);
 
-    if (!password || !confirmPassword) {
-      setError("Please fill in both password fields.");
+    if (!email || !code || !password || !confirmPassword) {
+      setError("Please fill in all fields.");
+      setLoading(false);
       return;
     }
 
     if (!hasLength || !hasNumber || !hasSpecial) {
-      setError("Password does not meet all rules.");
+      setError("Password does not meet all requirements.");
+      setLoading(false);
       return;
     }
 
     if (!passwordsMatch) {
       setError("Passwords do not match.");
+      setLoading(false);
       return;
     }
 
-    setSuccess("Password reset successfully.");
-    setTimeout(() => {
-      navigate("/success");
-    }, 800);
+    try {
+      const result = await resetPasswordAPI(email, code, password, confirmPassword);
+      
+      if (result.msg) {
+        setSuccess("✅ Password reset successfully! Redirecting to login...");
+        setTimeout(() => {
+          navigate("/login");
+        }, 2000);
+      } else {
+        setError(result.message || "Failed to reset password. Please try again.");
+      }
+    } catch (err) {
+      setError(err.message || "Invalid OTP or email. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -59,7 +80,7 @@ function ResetPassword() {
         <p className={`text-center text-sm transition-colors duration-300 ${
           isDarkMode ? 'text-white/60' : 'text-[#666]'
         }`}>
-          Your new password must be different from previous passwords
+          Enter the OTP sent to your email and create a new password
         </p>
 
         {/* Error box */}
@@ -84,7 +105,44 @@ function ResetPassword() {
           </div>
         )}
 
-        {/* Labels and Inputs */}
+        {/* Email Input */}
+        <label className={`text-sm transition-colors duration-300 ${
+          isDarkMode ? 'text-white/80' : 'text-[#0C355E]'
+        }`}>
+          Email Address
+        </label>
+        <input
+          type="email"
+          placeholder="Enter your email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          className={`h-12 rounded-[13px] px-3.5 outline-none placeholder:text-gray-400 transition-all duration-300 ${
+            isDarkMode 
+              ? 'bg-white/10 border border-white/20 text-white placeholder:text-white/50 focus:border-[#2B86ED]' 
+              : 'border-none bg-[#F3F9FF]'
+          }`}
+        />
+
+        {/* OTP Input */}
+        <label className={`text-sm transition-colors duration-300 ${
+          isDarkMode ? 'text-white/80' : 'text-[#0C355E]'
+        }`}>
+          OTP Code
+        </label>
+        <input
+          type="text"
+          placeholder="Enter 4-digit OTP"
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
+          maxLength={4}
+          className={`h-12 rounded-[13px] px-3.5 outline-none placeholder:text-gray-400 transition-all duration-300 ${
+            isDarkMode 
+              ? 'bg-white/10 border border-white/20 text-white placeholder:text-white/50 focus:border-[#2B86ED]' 
+              : 'border-none bg-[#F3F9FF]'
+          }`}
+        />
+
+        {/* New Password */}
         <label className={`text-sm transition-colors duration-300 ${
           isDarkMode ? 'text-white/80' : 'text-[#0C355E]'
         }`}>
@@ -102,6 +160,7 @@ function ResetPassword() {
           }`}
         />
 
+        {/* Confirm Password */}
         <label className={`text-sm transition-colors duration-300 ${
           isDarkMode ? 'text-white/80' : 'text-[#0C355E]'
         }`}>
@@ -128,7 +187,7 @@ function ResetPassword() {
             {hasNumber ? "✔" : "○"} Contains a number
           </p>
           <p className={hasSpecial ? "text-green-500 line-through" : (isDarkMode ? "text-white/50" : "text-gray-500")}>
-            {hasSpecial ? "✔" : "○"} Includes a special character
+            {hasSpecial ? "✔" : "○"} Includes a special character (!@#$%^&*)
           </p>
           <p className={passwordsMatch ? "text-green-500 line-through" : (isDarkMode ? "text-white/50" : "text-gray-500")}>
             {passwordsMatch ? "✔" : "○"} Passwords match
@@ -137,12 +196,11 @@ function ResetPassword() {
 
         {/* Reset button */}
         <button
-          className="h-12 bg-[#2B86ED] rounded-[13px] text-white text-lg font-bold border-none cursor-pointer mt-2.5 transition-all duration-300 hover:bg-[#1e6bc9] hover:scale-[1.02]"
+          className="h-12 bg-[#2B86ED] rounded-[13px] text-white text-lg font-bold border-none cursor-pointer mt-2.5 transition-all duration-300 hover:bg-[#1e6bc9] hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed"
           onClick={handleReset}
           disabled={isResetDisabled}
-          style={{ opacity: isResetDisabled ? 0.6 : 1, cursor: isResetDisabled ? "not-allowed" : "pointer" }}
         >
-          Reset Password
+          {loading ? "Resetting..." : "Reset Password"}
         </button>
       </div>
     </div>

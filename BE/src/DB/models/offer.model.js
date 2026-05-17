@@ -55,7 +55,7 @@ const offerSchema = new mongoose.Schema(
       required: true,
     },
     
-    // عدد المستخدمين اللي استخدموا العرض
+    // عدد المرات الكلية اللي استخدم فيها العرض
     usedCount: {
       type: Number,
       default: 0,
@@ -65,6 +65,16 @@ const offerSchema = new mongoose.Schema(
       default: null,
     },
     
+    // --- التعديل الجديد ---
+    // قائمة بالمستخدمين الذين استخدموا هذا العرض فعلياً
+    usersUsed: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+      },
+    ],
+    // ---------------------
+
     isActive: {
       type: Boolean,
       default: true,
@@ -73,5 +83,8 @@ const offerSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// تحسين البحث عن طريق الكود لأنه سيكون الأكثر استخداماً
+offerSchema.index({ code: 1 });
+
 export const offerModel =
-  mongoose.model.Offer || mongoose.model("Offer", offerSchema);
+  mongoose.models.Offer || mongoose.model("Offer", offerSchema);

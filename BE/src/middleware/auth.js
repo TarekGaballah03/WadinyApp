@@ -1,76 +1,71 @@
 // src/middleware/auth.js
-import { userModel } from "../DB/models/user.model.js";
+import { userModel, roles } from "../DB/models/user.model.js";
 import { asyncHandler } from "../utils/globalErrorHandling/index.js";
 import { verifyToken } from "../utils/token/verifyToken.js";
 
-export const roles = {
-  admin: "admin",
-  user: "user",
-   restaurant: "restaurant",  
-};
-
 export const tokenTypes = {
-  access: "access",
-  refresh: "refresh",
+    access: "access",
+    refresh: "refresh",
 };
 
 export const decodedToken = async ({ authorization, tokenType, next }) => {
-  const [prefix, token] = authorization?.split(" ") || [];
+    if (!authorization) return next(new Error("Token is required", { cause: 400 }));
 
-  if (!prefix || !token) {
-    return next(new Error("Token not found", { cause: 404 }));
-  }
+    const [prefix, token] = authorization.split(" ");
+    if (!token) return next(new Error("Token not found", { cause: 400 }));
 
-  let ACCESS_SIGNATURE = undefined;
-  let REFRESH_SIGNATURE = undefined;
+    // Determine signature based on prefix
+    let signature;
+    
+    switch(prefix) {
+        case process.env.PREFIX_TOKEN_ADMIN:
+            signature = tokenType === tokenTypes.access 
+                ? process.env.ACCESS_SIGNATURE_ADMIN 
+                : process.env.REFRESH_SIGNATURE_ADMIN;
+            break;
+        case process.env.PREFIX_TOKEN_USER:
+            signature = tokenType === tokenTypes.access 
+                ? process.env.ACCESS_SIGNATURE_USER 
+                : process.env.REFRESH_SIGNATURE_USER;
+            break;
+        case process.env.PREFIX_TOKEN_REST:
+            signature = tokenType === tokenTypes.access 
+                ? process.env.ACCESS_SIGNATURE_REST 
+                : process.env.REFRESH_SIGNATURE_REST;
+            break;
+        default:
+            return next(new Error("Invalid token prefix", { cause: 401 }));
+    }
 
-  if (prefix == process.env.PREFIX_TOKEN_ADMIN) {
-    ACCESS_SIGNATURE = process.env.ACCESS_SIGNATURE_ADMIN;
-    REFRESH_SIGNATURE = process.env.REFRESH_SIGNATURE_ADMIN;
-  } else if (prefix == process.env.PREFIX_TOKEN_USER) {
-    ACCESS_SIGNATURE = process.env.ACCESS_SIGNATURE_USER;
-    REFRESH_SIGNATURE = process.env.REFRESH_SIGNATURE_USER;
-  } else {
-    return next(new Error("Invalid token prefix", { cause: 401 }));
-  }
+const decoded = await verifyToken({ token, SIGNATURE: signature });
+    if (!decoded?.id) return next(new Error("Invalid token payload", { cause: 401 }));
 
-  const decoded = await verifyToken({
-    token,
-    SIGNATURE: tokenType == tokenTypes.access ? ACCESS_SIGNATURE : REFRESH_SIGNATURE,
-  });
+    const user = await userModel.findById(decoded.id);
+    if (!user || user.isDeleted) return next(new Error("User not found", { cause: 404 }));
 
-  if (!decoded?.id) {
-    return next(new Error("Invalid token payload", { cause: 401 }));
-  }
+    // Check if password was changed after token was issued
+    if (user.changePasswordAt) {
+        const changePasswordTime = parseInt(user.changePasswordAt.getTime() / 1000);
+        if (changePasswordTime > decoded.iat) {
+            return next(new Error("Token expired, please login again", { cause: 401 }));
+        }
+    }
 
-  const user = await userModel.findById(decoded.id);
-  if (!user) {
-    return next(new Error("User not found", { cause: 404 }));
-  }
-
-  if (parseInt(user.changePasswordAt?.getTime() / 1000) > decoded.iat) {
-    return next(new Error("Token expired, please login again", { cause: 401 }));
-  }
-
-  if (user.isDeleted) {
-    return next(new Error("User deleted", { cause: 401 }));
-  }
-
-  return user;
+    return user;
 };
 
 export const authentication = asyncHandler(async (req, res, next) => {
-  const { authorization } = req.headers;
-  const user = await decodedToken({ authorization, tokenType: tokenTypes.access, next });
-  req.user = user;
-  next();
+    const { authorization } = req.headers;
+    const user = await decodedToken({ authorization, tokenType: tokenTypes.access, next });
+    req.user = user;
+    next();
 });
 
 export const authorization = (accessRoles = []) => {
-  return asyncHandler(async (req, res, next) => {
-    if (!accessRoles.includes(req.user.role)) {
-      return next(new Error("Access denied", { cause: 403 }));
-    }
-    next();
-  });
+    return asyncHandler(async (req, res, next) => {
+        if (!accessRoles.includes(req.user.role)) {
+            return next(new Error("Not authorized", { cause: 403 }));
+        }
+        next();
+    });
 };

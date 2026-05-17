@@ -1,14 +1,14 @@
+// src/components/navbar/Navbar.jsx
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Menu, Sun, Moon } from "lucide-react";
 import { useTheme } from "../../context/ThemeContext";
+import { useAuth } from "../../context/AuthContext"; // ⭐ أضيفي useAuth
 
 export default function Navbar({ toggleSidebar, showBackButton = true }) {
   const navigate = useNavigate();
   const { isDarkMode, toggleTheme } = useTheme();
-  
-  // جيب حالة تسجيل الدخول من localStorage
-  const isLoggedIn = localStorage.getItem("loggedIn") === "true";
+  const { isAuthenticated } = useAuth(); // ⭐ نستخدم isAuthenticated من AuthContext
 
   const handleAuthClick = () => {
     navigate("/login");
@@ -70,7 +70,7 @@ export default function Navbar({ toggleSidebar, showBackButton = true }) {
             {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
           </button>
           
-          {!isLoggedIn ? (
+          {!isAuthenticated ? ( // ⭐ استخدمي isAuthenticated بدل localStorage
             // لو مش مسجل دخول: يظهر Login / Sign Up
             <span 
               onClick={handleAuthClick}
