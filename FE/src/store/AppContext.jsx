@@ -4,76 +4,7 @@ const AppContext = createContext();
 export const useAppContext = () => useContext(AppContext);
 
 export const AppProvider = ({ children }) => {
-  const [posts, setPosts] = useState([
-    {
-      id: 1,
-      name: 'Woods cafe',
-      author: 'John',
-      time: '4 min ago',
-      body: 'the new turkish coffee must try ! Grab a coffee and enjoy the futuristic vibe. #coffee #woodscafe',
-      postImage: 'https://images.unsplash.com/photo-1554118811-1e0d58224f24?w=600&h=300&fit=crop',
-      avatarImage: 'https://randomuser.me/api/portraits/men/32.jpg',
-      counts: { like: 12, dislike: 0, liked: false, disliked: false },
-      type: 'cafe',
-      gradient: 'linear-gradient(135deg,#3d6e8a,#6baed6 50%,#c4a25a)',
-      reviews: [
-        { 
-          id: 101, 
-          name: 'Jasmine Doe', 
-          time: '2 min ago',
-          likes: 2,
-          liked: false,
-          disliked: false,
-          avatarImage: 'https://randomuser.me/api/portraits/women/44.jpg',
-          comment: 'I was just there ! The new turkish coffee is amazing.' 
-        },
-        { 
-          id: 102, 
-          name: 'Alex Smith', 
-          time: '1 hour ago',
-          likes: 0,
-          liked: false,
-          disliked: false,
-          avatarImage: 'https://randomuser.me/api/portraits/men/45.jpg',
-          comment: 'Great coffee, but a bit crowded today.' 
-        }
-      ]
-    },
-    {
-      id: 2,
-      name: 'Main Street',
-      author: 'Sara Morgan',
-      time: '1 min ago',
-      body: 'Watch out ! Large pothole on Main Street near the city center. Reported via Wadiny',
-      postImage: 'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=600&h=300&fit=crop',
-      avatarImage: 'https://randomuser.me/api/portraits/women/68.jpg',
-      counts: { like: 15, dislike: 0, liked: false, disliked: false },
-      type: 'hazard',
-      gradient: 'linear-gradient(135deg,#c0392b,#e67e22 50%,#f39c12)',
-      reviews: [
-        { 
-          id: 201, 
-          name: 'Mike Brown', 
-          time: '3 min ago',
-          likes: 1,
-          liked: false,
-          disliked: false,
-          avatarImage: 'https://randomuser.me/api/portraits/men/52.jpg',
-          comment: 'Almost broke my tire there! Please fix.' 
-        },
-        { 
-          id: 202, 
-          name: 'Emma Davis', 
-          time: '5 min ago',
-          likes: 0,
-          liked: false,
-          disliked: false,
-          avatarImage: 'https://randomuser.me/api/portraits/women/23.jpg',
-          comment: 'Thanks for the heads up.' 
-        }
-      ]
-    },
-  ]);
+  const [posts, setPosts] = useState([]);
 
   // حالة تخزين صورة البروفايل الحالية للمستخدم
   const [userAvatar, setUserAvatar] = useState(() => {
@@ -239,6 +170,7 @@ export const AppProvider = ({ children }) => {
   return (
     <AppContext.Provider value={{ 
       posts, 
+      setPosts,
       addNewPost, 
       deletePost, 
       deleteComment,

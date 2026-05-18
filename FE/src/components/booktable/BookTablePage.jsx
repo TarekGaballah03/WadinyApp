@@ -4,6 +4,7 @@ import Swal from 'sweetalert2'
 import Sidebar from '../sidebar/Sidebar'
 import Navbar from '../navbar/Navbar'
 import { useTheme } from '../../context/ThemeContext'
+import { createBookingAPI } from '../../services/api'
 
 export default function BookTablePage() {
   const navigate = useNavigate()
@@ -93,8 +94,21 @@ export default function BookTablePage() {
         month: 'long',
         day: 'numeric'
       })
-      
-      // نفس SweetAlert المستخدم في NewPostPage بالضبط
+
+      try {
+        await createBookingAPI({
+          restaurantId: location.state?.restaurantId,
+          restaurantName: restaurant,
+          date: selectedDate,
+          time: formattedTime,
+          guests: guestCount,
+          contactName: userName,
+          contactPhone: phoneNumber,
+        });
+      } catch (err) {
+        console.warn('Booking API call failed (might not have restaurantId):', err.message);
+      }
+
       await Swal.fire({
         title: 'Success!',
         text: `Your table at ${restaurant} has been booked for ${guestCount} guests on ${formattedDate} at ${formattedTime}`,
@@ -105,7 +119,6 @@ export default function BookTablePage() {
         timer: 2500,
         showConfirmButton: true,
       })
-      
       navigate(-1)
     } else {
       await Swal.fire({

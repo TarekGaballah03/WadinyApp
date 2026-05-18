@@ -1,201 +1,155 @@
-const Place = require("./place.model");
-const RoadProblem = require("./roadProblem.model");
-const axios = require("axios");
+// src/modules/map/map.controller.js
+import Place from "./place.model.js";
+import RoadProblem from "./roadProblem.model.js";
+import axios from "axios";
+import { asyncHandler } from "../../utils/globalErrorHandling/index.js";
 
 // ─── PLACES ────────────────────────────────────────────────────────────────
 
-exports.getAllPlaces = async (req, res) => {
-  try {
-    const { type, lat, lng, radius = 5000 } = req.query;
-    const filter = {};
-    if (type) filter.type = type;
+export const getAllPlaces = asyncHandler(async (req, res) => {
+  const { type, lat, lng, radius = 5000 } = req.query;
+  const filter = {};
+  if (type) filter.type = type;
 
-    // If coordinates provided, filter by proximity using $geoWithin
-    if (lat && lng) {
-      filter.location = {
-        $geoWithin: {
-          $centerSphere: [
-            [parseFloat(lng), parseFloat(lat)],
-            parseFloat(radius) / 6378100, // convert meters to radians
-          ],
-        },
-      };
-    }
-
-    const places = await Place.find(filter).select("-__v");
-    res.status(200).json({ status: "success", results: places.length, data: places });
-  } catch (err) {
-    res.status(500).json({ status: "error", message: err.message });
+  if (lat && lng) {
+    filter.location = {
+      $geoWithin: {
+        $centerSphere: [
+          [parseFloat(lng), parseFloat(lat)],
+          parseFloat(radius) / 6378100,
+        ],
+      },
+    };
   }
-};
 
-exports.getPlaceById = async (req, res) => {
-  try {
-    const place = await Place.findById(req.params.id);
-    if (!place) return res.status(404).json({ status: "fail", message: "Place not found" });
-    res.status(200).json({ status: "success", data: place });
-  } catch (err) {
-    res.status(500).json({ status: "error", message: err.message });
-  }
-};
+  const places = await Place.find(filter).select("-__v");
+  res.status(200).json({ status: "success", results: places.length, data: places });
+});
 
-exports.createPlace = async (req, res) => {
-  try {
-    const place = await Place.create(req.body);
-    res.status(201).json({ status: "success", data: place });
-  } catch (err) {
-    res.status(400).json({ status: "error", message: err.message });
-  }
-};
+export const getPlaceById = asyncHandler(async (req, res) => {
+  const place = await Place.findById(req.params.id);
+  if (!place) return res.status(404).json({ status: "fail", message: "Place not found" });
+  res.status(200).json({ status: "success", data: place });
+});
 
-exports.updatePlace = async (req, res) => {
-  try {
-    const place = await Place.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
-      runValidators: true,
-    });
-    if (!place) return res.status(404).json({ status: "fail", message: "Place not found" });
-    res.status(200).json({ status: "success", data: place });
-  } catch (err) {
-    res.status(400).json({ status: "error", message: err.message });
-  }
-};
+export const createPlace = asyncHandler(async (req, res) => {
+  const place = await Place.create(req.body);
+  res.status(201).json({ status: "success", data: place });
+});
 
-exports.deletePlace = async (req, res) => {
-  try {
-    await Place.findByIdAndDelete(req.params.id);
-    res.status(204).json({ status: "success", data: null });
-  } catch (err) {
-    res.status(500).json({ status: "error", message: err.message });
-  }
-};
+export const updatePlace = asyncHandler(async (req, res) => {
+  const place = await Place.findByIdAndUpdate(req.params.id, req.body, {
+    new: true,
+    runValidators: true,
+  });
+  if (!place) return res.status(404).json({ status: "fail", message: "Place not found" });
+  res.status(200).json({ status: "success", data: place });
+});
+
+export const deletePlace = asyncHandler(async (req, res) => {
+  await Place.findByIdAndDelete(req.params.id);
+  res.status(204).json({ status: "success", data: null });
+});
 
 // ─── ROAD PROBLEMS ──────────────────────────────────────────────────────────
 
-exports.getAllRoadProblems = async (req, res) => {
-  try {
-    const problems = await RoadProblem.find({ resolved: false })
-      .populate("reportedBy", "name avatar")
-      .sort("-createdAt");
-    res.status(200).json({ status: "success", results: problems.length, data: problems });
-  } catch (err) {
-    res.status(500).json({ status: "error", message: err.message });
-  }
-};
+export const getAllRoadProblems = asyncHandler(async (req, res) => {
+  const problems = await RoadProblem.find({ resolved: false })
+    .populate("reportedBy", "name avatar")
+    .sort("-createdAt");
+  res.status(200).json({ status: "success", results: problems.length, data: problems });
+});
 
-exports.createRoadProblem = async (req, res) => {
-  try {
-    const problem = await RoadProblem.create({
-      ...req.body,
-      reportedBy: req.user._id,
-    });
-    const populated = await problem.populate("reportedBy", "name avatar");
+export const createRoadProblem = asyncHandler(async (req, res) => {
+  const problem = await RoadProblem.create({
+    ...req.body,
+    reportedBy: req.user._id,
+  });
+  const populated = await problem.populate("reportedBy", "name avatar");
 
-    // Emit via Socket.io if available
-    const io = req.app.get("io");
-    if (io) io.emit("new_road_problem", populated);
+  const io = req.app.get("io");
+  if (io) io.emit("new_road_problem", populated);
 
-    res.status(201).json({ status: "success", data: populated });
-  } catch (err) {
-    res.status(400).json({ status: "error", message: err.message });
-  }
-};
+  res.status(201).json({ status: "success", data: populated });
+});
 
-exports.resolveRoadProblem = async (req, res) => {
-  try {
-    const problem = await RoadProblem.findByIdAndUpdate(
-      req.params.id,
-      { resolved: true, resolvedAt: Date.now() },
-      { new: true }
-    );
-    if (!problem) return res.status(404).json({ status: "fail", message: "Problem not found" });
+export const resolveRoadProblem = asyncHandler(async (req, res) => {
+  const problem = await RoadProblem.findByIdAndUpdate(
+    req.params.id,
+    { resolved: true, resolvedAt: Date.now() },
+    { new: true }
+  );
+  if (!problem) return res.status(404).json({ status: "fail", message: "Problem not found" });
 
-    const io = req.app.get("io");
-    if (io) io.emit("road_problem_resolved", { id: problem._id });
+  const io = req.app.get("io");
+  if (io) io.emit("road_problem_resolved", { id: problem._id });
 
-    res.status(200).json({ status: "success", data: problem });
-  } catch (err) {
-    res.status(500).json({ status: "error", message: err.message });
-  }
-};
+  res.status(200).json({ status: "success", data: problem });
+});
 
-exports.deleteRoadProblem = async (req, res) => {
-  try {
-    await RoadProblem.findByIdAndDelete(req.params.id);
-    res.status(204).json({ status: "success", data: null });
-  } catch (err) {
-    res.status(500).json({ status: "error", message: err.message });
-  }
-};
+export const deleteRoadProblem = asyncHandler(async (req, res) => {
+  await RoadProblem.findByIdAndDelete(req.params.id);
+  res.status(204).json({ status: "success", data: null });
+});
 
 // ─── NAVIGATION ─────────────────────────────────────────────────────────────
-// Uses OpenRouteService (free) — swap for Google Directions if you have a key
 
-exports.getDirections = async (req, res) => {
-  try {
-    const { originLat, originLng, destLat, destLng, mode = "driving-car" } = req.body;
-    // mode options: driving-car | foot-walking | cycling-regular
+export const getDirections = asyncHandler(async (req, res) => {
+  const { originLat, originLng, destLat, destLng, mode = "driving-car" } = req.body;
 
-    const ORS_KEY = process.env.ORS_API_KEY;
-    const url = `https://api.openrouteservice.org/v2/directions/${mode}`;
+  const ORS_KEY = process.env.ORS_API_KEY;
+  const url = `https://api.openrouteservice.org/v2/directions/${mode}`;
 
-    const response = await axios.post(
-      url,
-      {
-        coordinates: [
-          [parseFloat(originLng), parseFloat(originLat)],
-          [parseFloat(destLng), parseFloat(destLat)],
-        ],
+  const response = await axios.post(
+    url,
+    {
+      coordinates: [
+        [parseFloat(originLng), parseFloat(originLat)],
+        [parseFloat(destLng), parseFloat(destLat)],
+      ],
+    },
+    {
+      headers: {
+        Authorization: ORS_KEY,
+        "Content-Type": "application/json",
       },
-      {
-        headers: {
-          Authorization: ORS_KEY,
-          "Content-Type": "application/json",
-        },
-      }
-    );
+    }
+  );
 
-    const route = response.data.routes[0];
-    const summary = route.summary;
-    const steps = route.segments[0].steps.map((s) => ({
-      instruction: s.instruction,
-      distance: s.distance,
-      duration: s.duration,
-    }));
+  const route = response.data.routes[0];
+  const summary = route.summary;
+  const steps = route.segments[0].steps.map((s) => ({
+    instruction: s.instruction,
+    distance: s.distance,
+    duration: s.duration,
+  }));
 
-    res.status(200).json({
-      status: "success",
-      data: {
-        distance: summary.distance, // meters
-        duration: summary.duration, // seconds
-        geometry: route.geometry, // encoded polyline
-        steps,
-      },
-    });
-  } catch (err) {
-    res.status(500).json({ status: "error", message: err.message });
-  }
-};
+  res.status(200).json({
+    status: "success",
+    data: {
+      distance: summary.distance,
+      duration: summary.duration,
+      geometry: route.geometry,
+      steps,
+    },
+  });
+});
 
 // ─── SEARCH ─────────────────────────────────────────────────────────────────
 
-exports.searchPlaces = async (req, res) => {
-  try {
-    const { q, type } = req.query;
-    if (!q) return res.status(400).json({ status: "fail", message: "Query required" });
+export const searchPlaces = asyncHandler(async (req, res) => {
+  const { q, type } = req.query;
+  if (!q) return res.status(400).json({ status: "fail", message: "Query required" });
 
-    const filter = {
-      $or: [
-        { name: { $regex: q, $options: "i" } },
-        { description: { $regex: q, $options: "i" } },
-        { address: { $regex: q, $options: "i" } },
-      ],
-    };
-    if (type) filter.type = type;
+  const filter = {
+    $or: [
+      { name: { $regex: q, $options: "i" } },
+      { description: { $regex: q, $options: "i" } },
+      { address: { $regex: q, $options: "i" } },
+    ],
+  };
+  if (type) filter.type = type;
 
-    const places = await Place.find(filter).limit(20);
-    res.status(200).json({ status: "success", results: places.length, data: places });
-  } catch (err) {
-    res.status(500).json({ status: "error", message: err.message });
-  }
-};
+  const places = await Place.find(filter).limit(20);
+  res.status(200).json({ status: "success", results: places.length, data: places });
+});

@@ -2,7 +2,8 @@
 import { Router } from "express";
 import * as RS from "./report.service.js";
 import * as RV from "./report.validation.js";
-import { authentication, authorization, roles } from "../../middleware/auth.js";
+import { authentication, authorization } from "../../middleware/auth.js";
+import { roles } from "../../DB/models/user.model.js";
 import { validation } from "../../middleware/validation.js";
 import { fileTypes, multerHost } from "../../middleware/multer.js";
 

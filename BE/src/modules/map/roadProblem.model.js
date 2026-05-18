@@ -1,4 +1,5 @@
-const mongoose = require("mongoose");
+// src/modules/map/roadProblem.model.js
+import mongoose from "mongoose";
 
 const roadProblemSchema = new mongoose.Schema(
   {
@@ -41,4 +42,4 @@ const roadProblemSchema = new mongoose.Schema(
 
 roadProblemSchema.index({ location: "2dsphere" });
 
-module.exports = mongoose.model("RoadProblem", roadProblemSchema);
+export default mongoose.models.RoadProblem || mongoose.model("RoadProblem", roadProblemSchema);

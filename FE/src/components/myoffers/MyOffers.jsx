@@ -1,8 +1,9 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Sidebar from '../sidebar/Sidebar'
 import Navbar from '../navbar/Navbar'
 import { useTheme } from '../../context/ThemeContext'
+import { getUserOffersAPI } from '../../services/api'
 
 /* ─── Coupon Card Component ─── */
 function CouponCard({ status, title, merchant, expiry, isUsed, isDarkMode }) {
@@ -84,43 +85,49 @@ export default function MyOffersPage() {
   const [activeTab, setActiveTab] = useState('Active')
 
   const tabs = ['Active', 'Used', 'Saved']
-  
-  const offersData = [
-    {
-      status: 'Active',
-      title: '20% off your Next Coffee',
-      merchant: 'The Daily Grind',
-      expiry: 'Expires in 3 days',
-      tab: 'Active'
-    },
-    {
-      status: 'Active',
-      title: 'Buy One Get One Free',
-      merchant: 'Burger King',
-      expiry: 'Valid until 31/12/2025',
-      tab: 'Active'
-    },
-    {
-      status: 'Active',
-      title: 'Buy One Get One Free',
-      merchant: 'Sushi place',
-      expiry: 'Expires in 1 week',
-      tab: 'Active'
-    },
-    {
-      status: 'Used',
-      title: '15% off all drinks',
-      merchant: 'Moka Cafe',
-      expiry: 'Used on 5/10/2025',
-      tab: 'Used',
-      isUsed: true
-    }
-  ]
+  const [offersData, setOffersData] = useState([])
+  const [loading, setLoading] = useState(true)
 
-  const filteredOffers = offersData.filter(offer => 
-    activeTab === 'Active' ? offer.tab === 'Active' : 
-    activeTab === 'Used' ? offer.tab === 'Used' : 
-    offer.tab === 'Saved'
+  useEffect(() => {
+    const loadOffers = async () => {
+      try {
+        const data = await getUserOffersAPI()
+        const active = (data.availableOffers || []).map((o) => ({
+          status: 'Active',
+          title: o.title,
+          merchant: o.restaurantId?.name || 'Restaurant',
+          expiry: o.validUntil
+            ? `Valid until ${new Date(o.validUntil).toLocaleDateString()}`
+            : 'Limited time',
+          tab: 'Active',
+          isUsed: false,
+        }))
+        const used = (data.usedOffers || []).map((o) => ({
+          status: 'Used',
+          title: o.title,
+          merchant: o.restaurantId?.name || 'Restaurant',
+          expiry: o.usedAt
+            ? `Used on ${new Date(o.usedAt).toLocaleDateString()}`
+            : 'Redeemed',
+          tab: 'Used',
+          isUsed: true,
+        }))
+        setOffersData([...active, ...used])
+      } catch {
+        setOffersData([])
+      } finally {
+        setLoading(false)
+      }
+    }
+    loadOffers()
+  }, [])
+
+  const filteredOffers = offersData.filter((offer) =>
+    activeTab === 'Active'
+      ? offer.tab === 'Active'
+      : activeTab === 'Used'
+        ? offer.tab === 'Used'
+        : false
   )
 
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen)
@@ -179,13 +186,19 @@ export default function MyOffersPage() {
           </div>
         </div>
 
+        {loading && (
+          <p className={`text-center py-8 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+            Loading your offers…
+          </p>
+        )}
+
         {/* Offers Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-8 pb-10">
-          {filteredOffers.length > 0 ? (
+          {!loading && filteredOffers.length > 0 ? (
             filteredOffers.map((offer, idx) => (
               <CouponCard key={idx} {...offer} isDarkMode={isDarkMode} />
             ))
-          ) : (
+          ) : !loading ? (
             <div className={`col-span-full flex flex-col items-center justify-center py-16 rounded-2xl transition-colors duration-300 ${
               isDarkMode ? 'bg-white/5' : 'bg-gray-50'
             }`}>
@@ -206,7 +219,7 @@ export default function MyOffersPage() {
                 Browse Offers
               </button>
             </div>
-          )}
+          ) : null}
         </div>
       </div>
     </div>

@@ -1,5 +1,5 @@
 // src/services/api.js
-const API_BASE_URL = 'http://localhost:3000';
+import { API_BASE_URL } from '../config/apiConfig';
 
 // ==================== Helper Functions ====================
 
@@ -165,6 +165,14 @@ export const resetPasswordAPI = async (email, code, newPassword, cPassword) => {
 // ==================== User APIs ====================
 export const getMyProfileAPI = async () => {
   const response = await fetch(`${API_BASE_URL}/users/my-profile`, {
+    method: 'GET',
+    headers: getHeaders(),
+  });
+  return handleResponse(response);
+};
+
+export const getUserProfileAPI = async (userId) => {
+  const response = await fetch(`${API_BASE_URL}/users/profile/${userId}`, {
     method: 'GET',
     headers: getHeaders(),
   });
@@ -381,7 +389,7 @@ export const getOffersAPI = async (filters = {}) => {
   const { restaurantId, isActive, sort, page = 1, limit = 10 } = filters;
   const params = new URLSearchParams();
   if (restaurantId) params.append('restaurantId', restaurantId);
-  if (isActive !== undefined) params.append('isActive', isActive);
+  if (isActive !== undefined) params.append('isActive', String(isActive));
   if (sort) params.append('sort', sort);
   if (page) params.append('page', page);
   if (limit) params.append('limit', limit);
@@ -393,7 +401,7 @@ export const getOffersAPI = async (filters = {}) => {
 export const getMyRestaurantOffersAPI = async (filters = {}) => {
   const { isActive, sort, page = 1, limit = 10 } = filters;
   const params = new URLSearchParams();
-  if (isActive !== undefined) params.append('isActive', isActive);
+  if (isActive !== undefined) params.append('isActive', String(isActive));
   if (sort) params.append('sort', sort);
   if (page) params.append('page', page);
   if (limit) params.append('limit', limit);
@@ -481,4 +489,161 @@ export const logoutAPI = () => {
   localStorage.removeItem('userRole');
   localStorage.removeItem('loggedIn');
   localStorage.removeItem('currentUserEmail');
+};
+
+// ==================== Posts APIs ====================
+export const getPostsAPI = async (filters = {}) => {
+  const { type, page = 1, limit = 20 } = filters;
+  const params = new URLSearchParams();
+  if (type) params.append('type', type);
+  params.append('page', page);
+  params.append('limit', limit);
+
+  const response = await fetch(`${API_BASE_URL}/posts?${params.toString()}`);
+  return handleResponse(response);
+};
+
+export const getPostByIdAPI = async (id) => {
+  const response = await fetch(`${API_BASE_URL}/posts/${id}`);
+  return handleResponse(response);
+};
+
+export const createPostAPI = async (postData) => {
+  const formData = new FormData();
+  formData.append('title', postData.title);
+  formData.append('body', postData.body);
+  formData.append('type', postData.type || 'social');
+  if (postData.location) formData.append('location', postData.location);
+  if (postData.lat != null) formData.append('lat', postData.lat);
+  if (postData.lng != null) formData.append('lng', postData.lng);
+  if (postData.offerDiscount) formData.append('offerDiscount', postData.offerDiscount);
+  if (postData.offerValidUntil) formData.append('offerValidUntil', postData.offerValidUntil);
+  if (postData.restaurantId) formData.append('restaurantId', postData.restaurantId);
+  if (postData.attachment) formData.append('attachment', postData.attachment);
+
+  const response = await fetch(`${API_BASE_URL}/posts/create`, {
+    method: 'POST',
+    headers: { 'Authorization': getHeaders().Authorization },
+    body: formData,
+  });
+  return handleResponse(response);
+};
+
+export const deletePostAPI = async (id) => {
+  const response = await fetch(`${API_BASE_URL}/posts/${id}`, {
+    method: 'DELETE',
+    headers: getHeaders(),
+  });
+  return handleResponse(response);
+};
+
+export const togglePostLikeAPI = async (id) => {
+  const response = await fetch(`${API_BASE_URL}/posts/${id}/like`, {
+    method: 'PATCH',
+    headers: getHeaders(),
+  });
+  return handleResponse(response);
+};
+
+export const togglePostDislikeAPI = async (id) => {
+  const response = await fetch(`${API_BASE_URL}/posts/${id}/dislike`, {
+    method: 'PATCH',
+    headers: getHeaders(),
+  });
+  return handleResponse(response);
+};
+
+export const addPostCommentAPI = async (postId, text) => {
+  const response = await fetch(`${API_BASE_URL}/posts/${postId}/comment`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({ text }),
+  });
+  return handleResponse(response);
+};
+
+export const getPostCommentsAPI = async (postId) => {
+  const response = await fetch(`${API_BASE_URL}/posts/${postId}/comments`);
+  return handleResponse(response);
+};
+
+export const deletePostCommentAPI = async (commentId) => {
+  const response = await fetch(`${API_BASE_URL}/posts/comment/${commentId}`, {
+    method: 'DELETE',
+    headers: getHeaders(),
+  });
+  return handleResponse(response);
+};
+
+export const toggleCommentLikeAPI = async (commentId) => {
+  const response = await fetch(`${API_BASE_URL}/posts/comment/${commentId}/like`, {
+    method: 'PATCH',
+    headers: getHeaders(),
+  });
+  return handleResponse(response);
+};
+
+// ==================== Reports APIs ====================
+export const submitReportAPI = async (reportData) => {
+  const formData = new FormData();
+  formData.append('issueType', reportData.issueType);
+  if (reportData.note) formData.append('note', reportData.note);
+  if (reportData.location) formData.append('location', reportData.location);
+  if (reportData.coordinates) formData.append('coordinates', JSON.stringify(reportData.coordinates));
+  if (reportData.sharedToFeed !== undefined) formData.append('sharedToFeed', reportData.sharedToFeed);
+  if (reportData.media) formData.append('media', reportData.media);
+
+  const response = await fetch(`${API_BASE_URL}/reports/submit`, {
+    method: 'POST',
+    headers: { 'Authorization': getHeaders().Authorization },
+    body: formData,
+  });
+  return handleResponse(response);
+};
+
+export const getReportsAPI = async (filters = {}) => {
+  const { status, page = 1, limit = 20 } = filters;
+  const params = new URLSearchParams();
+  if (status) params.append('status', status);
+  params.append('page', page);
+  params.append('limit', limit);
+
+  const response = await fetch(`${API_BASE_URL}/reports?${params.toString()}`);
+  return handleResponse(response);
+};
+
+// ==================== Bookings APIs ====================
+export const createBookingAPI = async (bookingData) => {
+  const response = await fetch(`${API_BASE_URL}/bookings/create`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify(bookingData),
+  });
+  return handleResponse(response);
+};
+
+export const getMyBookingsAPI = async () => {
+  const response = await fetch(`${API_BASE_URL}/bookings/my-bookings`, {
+    method: 'GET',
+    headers: getHeaders(),
+  });
+  return handleResponse(response);
+};
+
+export const cancelBookingAPI = async (id) => {
+  const response = await fetch(`${API_BASE_URL}/bookings/${id}/cancel`, {
+    method: 'PATCH',
+    headers: getHeaders(),
+  });
+  return handleResponse(response);
+};
+
+// ==================== AI Chat API ====================
+export const aiChatAPI = async (message) => {
+  const response = await fetch(`${API_BASE_URL}/ai/chat`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({ message }),
+  });
+  return handleResponse(response);
 };

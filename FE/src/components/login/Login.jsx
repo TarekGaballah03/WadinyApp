@@ -61,7 +61,7 @@ function Login() {
         localStorage.setItem("access_token", result.token.access_token);
         localStorage.setItem("refresh_token", result.token.refresh_token);
         localStorage.setItem("token_prefix", result.token.prefix);
-        localStorage.setItem("user_role", result.role);
+        localStorage.setItem("userRole", result.role || "user");
         localStorage.setItem("loggedIn", "true");
         
         toast.success(`Welcome back! 🎉`, {
@@ -108,7 +108,7 @@ const googleLogin = useGoogleLogin({
         localStorage.setItem("access_token", result.access_token);
         localStorage.setItem("refresh_token", result.refresh_token);
         localStorage.setItem("token_prefix", result.prefix);
-        localStorage.setItem("user_role", result.role);
+        localStorage.setItem("userRole", result.role || "user");
         localStorage.setItem("loggedIn", "true");
         
         toast.success("Google login successful! 🚀", { 

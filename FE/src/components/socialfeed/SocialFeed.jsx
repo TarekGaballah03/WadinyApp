@@ -5,6 +5,20 @@ import { useAppContext } from '../../store/AppContext'
 import Sidebar from '../sidebar/Sidebar'
 import Navbar from '../navbar/Navbar'
 import { useTheme } from '../../context/ThemeContext'
+import { 
+  getPostsAPI, 
+  deletePostAPI, 
+  addPostCommentAPI, 
+  deletePostCommentAPI, 
+  togglePostLikeAPI, 
+  togglePostDislikeAPI,
+  toggleCommentLikeAPI,
+  getPostCommentsAPI,
+  followUserAPI,
+  unfollowUserAPI,
+  checkFollowingAPI,
+} from '../../services/api'
+import { mapBackendPostToSocial, formatTimeAgo } from '../../utils/postMappers'
 
 // SVG Icons (نفس الكود)
 const LikeIcon = ({ active, isDarkMode }) => (
@@ -67,12 +81,12 @@ export default function SocialFeed() {
   const { isDarkMode } = useTheme();
   const { 
     posts, 
-    handlePostAction, 
-    addComment, 
-    handleCommentAction, 
-    deletePost, 
-    deleteComment,
-    // following removed - wasn't used
+    setPosts,
+    handlePostAction: contextHandlePostAction, 
+    addComment: contextAddComment, 
+    handleCommentAction: contextHandleCommentAction, 
+    deletePost: contextDeletePost, 
+    deleteComment: contextDeleteComment,
     followUser,
     unfollowUser,
     isFollowing,
@@ -83,8 +97,27 @@ export default function SocialFeed() {
   const [toast, setToast] = useState(null);
   const [expandedComments, setExpandedComments] = useState({});
   const [filterType, setFilterType] = useState('all');
+  const [loadingPosts, setLoadingPosts] = useState(true);
   
   const postRefs = useRef({});
+
+  const loadPostsFromBackend = async () => {
+    setLoadingPosts(true);
+    try {
+      const data = await getPostsAPI({ limit: 50 });
+      const mapped = (data?.posts || []).map(mapBackendPostToSocial);
+      setPosts(mapped);
+    } catch (err) {
+      console.warn('Could not fetch posts from backend:', err.message);
+      setPosts([]);
+    } finally {
+      setLoadingPosts(false);
+    }
+  };
+
+  useEffect(() => {
+    loadPostsFromBackend();
+  }, []);
 
   // isLoggedIn removed - wasn't used
   // No need for useEffect checking loggedIn since we have protected routes
@@ -107,40 +140,116 @@ export default function SocialFeed() {
     setToast({ message, type })
   }
 
-  const handleUserClick = (author, avatarImage) => {
+  const handleUserClick = (author, avatarImage, authorId) => {
     if (author === 'You') {
       navigate('/profile');
     } else {
       navigate('/user-profile', { 
         state: { 
           userName: author, 
-          userAvatar: avatarImage 
+          userAvatar: avatarImage,
+          userId: authorId,
         } 
       });
     }
   };
 
-  const handleFollowToggle = (author) => {
-    if (author === 'You') return;
-    if (isFollowing(author)) {
-      unfollowUser(author);
-      showToast(`Unfollowed ${author}`, 'success');
-    } else {
-      followUser(author);
-      showToast(`Following ${author}`, 'success');
+  const handleFollowToggle = async (author, authorId) => {
+    if (author === 'You' || !authorId) return;
+    try {
+      if (isFollowing(author)) {
+        await unfollowUserAPI(authorId);
+        unfollowUser(author);
+        showToast(`Unfollowed ${author}`, 'success');
+      } else {
+        await followUserAPI(authorId);
+        followUser(author);
+        showToast(`Following ${author}`, 'success');
+      }
+    } catch (err) {
+      showToast(err.message || 'Could not update follow status', 'error');
     }
   };
 
-  const handleAddComment = (postId) => {
-    if (commentText[postId]?.trim()) {
-      addComment(postId, commentText[postId]);
+  const handlePostAction = async (postId, action) => {
+    contextHandlePostAction(postId, action);
+    try {
+      if (action === 'like') {
+        await togglePostLikeAPI(postId);
+      } else if (action === 'dislike') {
+        await togglePostDislikeAPI(postId);
+      }
+    } catch (err) {
+      console.warn("Failed to toggle reaction on backend:", err.message);
+    }
+  };
+
+  const handleAddComment = async (postId) => {
+    const text = commentText[postId]?.trim();
+    if (text) {
+      contextAddComment(postId, text);
       setCommentText({ ...commentText, [postId]: '' });
       showToast('Comment added!', 'success');
+
+      try {
+        await addPostCommentAPI(postId, text);
+        // Refresh comments list
+        const { comments } = await getPostCommentsAPI(postId);
+        if (comments) {
+          const mappedComments = comments.map(c => ({
+            id: c._id,
+            name: c.author?.name || 'Unknown',
+            time: formatTimeAgo(c.createdAt),
+            likes: c.likes?.length || 0,
+            liked: false,
+            disliked: false,
+            avatarImage: c.author?.image?.secure_url || 'https://randomuser.me/api/portraits/lego/1.jpg',
+            comment: c.text,
+          }));
+          
+          setPosts(prev => prev.map(p => {
+            if (p.id === postId) {
+              return { ...p, reviews: mappedComments };
+            }
+            return p;
+          }));
+        }
+      } catch (err) {
+        console.warn("Failed to save comment to backend:", err.message);
+      }
     }
   };
 
-  const toggleComments = (postId) => {
-    setExpandedComments(prev => ({ ...prev, [postId]: !prev[postId] }));
+  const toggleComments = async (postId) => {
+    const isExpanding = !expandedComments[postId];
+    setExpandedComments(prev => ({ ...prev, [postId]: isExpanding }));
+
+    if (isExpanding) {
+      try {
+        const { comments } = await getPostCommentsAPI(postId);
+        if (comments) {
+          const mappedComments = comments.map(c => ({
+            id: c._id,
+            name: c.author?.name || 'Unknown',
+            time: formatTimeAgo(c.createdAt),
+            likes: c.likes?.length || 0,
+            liked: false,
+            disliked: false,
+            avatarImage: c.author?.image?.secure_url || 'https://randomuser.me/api/portraits/lego/1.jpg',
+            comment: c.text,
+          }));
+          
+          setPosts(prev => prev.map(p => {
+            if (p.id === postId) {
+              return { ...p, reviews: mappedComments };
+            }
+            return p;
+          }));
+        }
+      } catch (err) {
+        console.warn("Failed to fetch comments for post:", err.message);
+      }
+    }
   };
 
   const handleDeletePost = async (postId, postName) => {
@@ -159,7 +268,12 @@ export default function SocialFeed() {
     });
 
     if (result.isConfirmed) {
-      deletePost(postId);
+      contextDeletePost(postId);
+      try {
+        await deletePostAPI(postId);
+      } catch (err) {
+        console.warn("Failed to delete post on backend:", err.message);
+      }
       await Swal.fire({
         title: 'Deleted!',
         text: 'Your post has been deleted.',
@@ -188,7 +302,12 @@ export default function SocialFeed() {
     });
 
     if (result.isConfirmed) {
-      deleteComment(postId, commentId);
+      contextDeleteComment(postId, commentId);
+      try {
+        await deletePostCommentAPI(commentId);
+      } catch (err) {
+        console.warn("Failed to delete comment on backend:", err.message);
+      }
       await Swal.fire({
         title: 'Deleted!',
         text: 'Your comment has been deleted.',
@@ -199,6 +318,17 @@ export default function SocialFeed() {
         timer: 1500,
         showConfirmButton: true,
       });
+    }
+  };
+
+  const handleCommentAction = async (postId, commentId, action) => {
+    contextHandleCommentAction(postId, commentId, action);
+    try {
+      if (action === 'like') {
+        await toggleCommentLikeAPI(commentId);
+      }
+    } catch (err) {
+      console.warn("Failed to toggle comment reaction on backend:", err.message);
     }
   };
 
@@ -284,8 +414,14 @@ export default function SocialFeed() {
         </button>
       </div>
 
+      {loadingPosts && (
+        <p className={`text-center py-8 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+          Loading posts…
+        </p>
+      )}
+
       <div className="max-w-3xl lg:max-w-4xl xl:max-w-5xl mx-auto px-4 md:px-6 pb-16">
-        {filteredPosts.map((post) => {
+        {!loadingPosts && filteredPosts.map((post) => {
           const isMyPost = post.author === 'You';
           const isCommentsExpanded = expandedComments[post.id];
 
@@ -320,14 +456,14 @@ export default function SocialFeed() {
                     <img 
                       src={post.avatarImage} 
                       alt={post.author}
-                      onClick={() => handleUserClick(post.author, post.avatarImage)}
+                      onClick={() => handleUserClick(post.author, post.avatarImage, post.authorId)}
                       className="w-11 h-11 md:w-12 md:h-12 rounded-full border-2 border-white object-cover shadow-sm cursor-pointer hover:opacity-80 transition-all hover:scale-105"
                     />
                     <div className="flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
                         <h3 
                           className={`text-[15px] md:text-base font-extrabold leading-tight cursor-pointer hover:underline ${isDarkMode ? 'text-white' : 'text-[#1a3650]'}`}
-                          onClick={() => handleUserClick(post.author, post.avatarImage)}
+                          onClick={() => handleUserClick(post.author, post.avatarImage, post.authorId)}
                         >
                           {post.author}
                         </h3>
@@ -337,7 +473,7 @@ export default function SocialFeed() {
                         </span>
                         {post.author !== 'You' && (
                           <button
-                            onClick={() => handleFollowToggle(post.author)}
+                            onClick={() => handleFollowToggle(post.author, post.authorId)}
                             className={`text-xs px-2 py-0.5 rounded-full transition ${
                               isFollowing(post.author)
                                 ? isDarkMode ? 'bg-white/10 text-gray-300' : 'bg-gray-200 text-gray-600'
@@ -491,7 +627,7 @@ export default function SocialFeed() {
           );
         })}
 
-        {filteredPosts.length === 0 && (
+        {!loadingPosts && filteredPosts.length === 0 && (
           <div className={`text-center py-12 rounded-2xl transition-all duration-300 ${
             isDarkMode ? 'bg-white/5' : 'bg-white'
           }`}>

@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { getRestaurantsAPI, getRestaurantByIdAPI } from '../../services/restaurantAPI';
-
-const API_BASE_URL = 'http://localhost:3000';
+import { API_BASE_URL } from '../../config/apiConfig';
 const PlacesContext = createContext();
 export const usePlaces = () => useContext(PlacesContext);
 

@@ -36,8 +36,14 @@ export function AuthProvider({ children }) {
           setUser(result.user);
           setIsAuthenticated(true);
           localStorage.setItem("loggedIn", "true");
+          localStorage.setItem("userId", result.user._id);
+          localStorage.setItem("userName", result.user.name || "");
+          localStorage.setItem("userRole", result.user.role || "user");
           if (result.user.email) {
             localStorage.setItem("currentUserEmail", result.user.email);
+          }
+          if (result.user.image?.secure_url) {
+            localStorage.setItem("userAvatar", result.user.image.secure_url);
           }
           console.log("✅ User authenticated:", result.user.email);
         } else {
@@ -76,6 +82,9 @@ export function AuthProvider({ children }) {
     localStorage.removeItem("userRole");
     localStorage.removeItem("loggedIn");
     localStorage.removeItem("currentUserEmail");
+    localStorage.removeItem("userId");
+    localStorage.removeItem("userName");
+    localStorage.removeItem("userAvatar");
     localStorage.removeItem("rememberMe");
   };
 

@@ -1,7 +1,6 @@
 // src/services/restaurantAPI.js
 import { getHeaders, handleResponse } from './api';
-
-const API_BASE_URL = 'http://localhost:3000';
+import { API_BASE_URL } from '../config/apiConfig';
 
 // ==================== Restaurant APIs ====================
 

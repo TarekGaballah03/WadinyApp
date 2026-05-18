@@ -1,9 +1,10 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import Sidebar from '../sidebar/Sidebar'
 import Navbar from '../navbar/Navbar'
 import { useTheme } from '../../context/ThemeContext'
 import { useAppContext } from '../../store/AppContext'
+import { getUserProfileAPI, followUserAPI, unfollowUserAPI, checkFollowingAPI } from '../../services/api'
 
 // SVG Icons
 const LikeIcon = ({ active, isDarkMode }) => (
@@ -41,13 +42,34 @@ export default function UserProfilePage() {
   const [expandedPostId, setExpandedPostId] = useState(null)
   const [activeTab, setActiveTab] = useState('posts')
   const location = useLocation()
-  const { userName, userAvatar } = location.state || {
-    userName: 'John',
-    userAvatar: 'https://randomuser.me/api/portraits/men/32.jpg'
-  }
+  const { userName: stateName, userAvatar: stateAvatar, userId } = location.state || {}
+  const [profile, setProfile] = useState(null)
+  const [isCurrentUserFollowing, setIsCurrentUserFollowing] = useState(false)
+
+  const userName = profile?.name || stateName || 'User'
+  const userAvatar =
+    profile?.image?.secure_url ||
+    stateAvatar ||
+    'https://randomuser.me/api/portraits/men/32.jpg'
+
+  useEffect(() => {
+    if (!userId) return
+    const loadProfile = async () => {
+      try {
+        const [profileRes, followRes] = await Promise.all([
+          getUserProfileAPI(userId),
+          checkFollowingAPI(userId).catch(() => ({ isFollowing: false })),
+        ])
+        if (profileRes.user) setProfile(profileRes.user)
+        setIsCurrentUserFollowing(!!followRes.isFollowing)
+      } catch {
+        /* keep state from navigation */
+      }
+    }
+    loadProfile()
+  }, [userId])
 
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen)
-  const isCurrentUserFollowing = isFollowing(userName)
   const isOwnProfile = userName === 'You'
 
   // Get user's posts from context
@@ -58,8 +80,8 @@ export default function UserProfilePage() {
   const totalPosts = userPosts.length
   
   // Followers و Following بيتحسبوا صح
-  const followersCount = getFollowersCount(userName)
-  const followingCount = getFollowingCount(userName)
+  const followersCount = profile?.followers?.length ?? getFollowersCount(userName)
+  const followingCount = profile?.following?.length ?? getFollowingCount(userName)
 
   // جلب تعليقات المستخدم على بوستات الآخرين
   const userComments = []
@@ -74,17 +96,30 @@ export default function UserProfilePage() {
     })
   })
 
-  const handleFollowToggle = () => {
-    if (isCurrentUserFollowing) {
-      unfollowUser(userName)
-    } else {
-      followUser(userName)
+  const handleFollowToggle = async () => {
+    if (!userId) {
+      if (isCurrentUserFollowing) unfollowUser(userName)
+      else followUser(userName)
+      setIsCurrentUserFollowing(!isCurrentUserFollowing)
+      return
+    }
+    try {
+      if (isCurrentUserFollowing) {
+        await unfollowUserAPI(userId)
+        unfollowUser(userName)
+      } else {
+        await followUserAPI(userId)
+        followUser(userName)
+      }
+      setIsCurrentUserFollowing(!isCurrentUserFollowing)
+    } catch {
+      /* ignore */
     }
   }
 
   const handleUserClick = (name, avatar) => {
     if (name !== 'You') {
-      navigate('/user-profile', { state: { userName: name, userAvatar: avatar } })
+      navigate('/user-profile', { state: { userName: name, userAvatar: avatar, userId } })
     } else {
       navigate('/profile')
     }

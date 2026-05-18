@@ -4,11 +4,10 @@ import { useNavigate } from "react-router-dom";
 import Sidebar from "../sidebar/Sidebar";
 import Navbar from "../navbar/Navbar";
 import { useTheme } from "../../context/ThemeContext";
-import { useAppContext } from "../../store/AppContext";
+import { submitReportAPI } from "../../services/api";
 
 export default function ReportPage() {
   const { isDarkMode } = useTheme();
-  const { addNewPost } = useAppContext();
   const navigate = useNavigate();
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
@@ -48,36 +47,24 @@ export default function ReportPage() {
   };
 
   const handleSubmit = async () => {
-    const userAvatar = localStorage.getItem('userAvatar') || 'https://randomuser.me/api/portraits/lego/1.jpg';
-    const userName = localStorage.getItem('userName') || 'You';
-    
-    // لو المستخدم اختار يشارك في الـ Social Feed
-    if (shareToSocial) {
-      const newPost = {
-        id: Date.now(),
-        name: issue,
-        author: userName,
-        time: 'Just now',
-        body: note || `Reported a ${issue} issue`,
-        postImage: preview || null,
-        avatarImage: userAvatar,
-        counts: { like: 0, dislike: 0, liked: false, disliked: false },
-        type: 'hazard',
-        gradient: 'linear-gradient(135deg,#c0392b,#e67e22 50%,#f39c12)',
-        reviews: []
-      };
-      
-      addNewPost(newPost);
+    try {
+      await submitReportAPI({
+        issueType: issue,
+        note: note || undefined,
+        sharedToFeed: shareToSocial,
+        media: file || undefined,
+      });
+    } catch (err) {
+      console.error('Report submission failed:', err.message);
     }
-    
-    // إظهار الـ Popup
+
+    // Show success popup regardless (offline-friendly)
     setShowPopup(true);
     setFile(null);
     setPreview(null);
     setNote("");
     setIssue("Pothole");
-    
-    // بعد 3 ثواني، نخفي الـ Popup ونودي للصفحة المناسبة
+
     setTimeout(() => {
       setShowPopup(false);
       if (shareToSocial) {

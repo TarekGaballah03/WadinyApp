@@ -1,4 +1,5 @@
-const mongoose = require("mongoose");
+// src/modules/map/place.model.js
+import mongoose from "mongoose";
 
 const placeSchema = new mongoose.Schema(
   {
@@ -40,15 +41,14 @@ const placeSchema = new mongoose.Schema(
 
     averageRating: { type: Number, default: 0 },
     reviewCount:   { type: Number, default: 0 },
-    priceLevel:    { type: Number, min: 1, max: 4, default: 2 }, // 1=$  4=$$$$
+    priceLevel:    { type: Number, min: 1, max: 4, default: 2 },
     tags: [String],
     isActive: { type: Boolean, default: true },
   },
   { timestamps: true }
 );
 
-// Geospatial index
 placeSchema.index({ location: "2dsphere" });
 placeSchema.index({ name: "text", description: "text", address: "text" });
 
-module.exports = mongoose.model("Place", placeSchema);
+export default mongoose.models.Place || mongoose.model("Place", placeSchema);

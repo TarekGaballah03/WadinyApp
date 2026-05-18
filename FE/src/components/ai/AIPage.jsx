@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { FiMic, FiSend } from "react-icons/fi";
 import aiAvatar from "../../assets/ai.jpg";
@@ -6,6 +6,7 @@ import userAvatar from "../../assets/avatar.jpg";
 import Sidebar from "../../components/sidebar/Sidebar";
 import Navbar from "../../components/navbar/Navbar";
 import { useTheme } from "../../context/ThemeContext";
+import { aiChatAPI } from "../../services/api";
 
 // Typing animation component
 const TypingIndicator = ({ isDarkMode }) => {
@@ -38,50 +39,44 @@ export default function AIPage() {
   const { isDarkMode } = useTheme();
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState([
-    { sender: "bot", text: "Hi! How can I help you navigate your world today?" }
+    { sender: "bot", text: "Hi! I'm the Wadiny Assistant. I can help you with traffic updates, restaurant recommendations, and more. How can I help you today?" }
   ]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
+  const [error, setError] = useState(null);
+  const messagesEndRef = useRef(null);
 
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
 
-  const handleSendMessage = (e) => {
-    e.preventDefault();
-    if (!message.trim()) return;
+  // Auto-scroll to bottom on new messages
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, isTyping]);
 
-    // Add user message
-    setMessages(prev => [...prev, { sender: "user", text: message }]);
-    
-    // Show typing indicator
+  const handleSendMessage = async (e) => {
+    e.preventDefault();
+    if (!message.trim() || isTyping) return;
+
+    const userMessage = message.trim();
+    setMessage("");
+    setError(null);
+
+    // Add user message to chat
+    setMessages(prev => [...prev, { sender: "user", text: userMessage }]);
     setIsTyping(true);
 
-    // Simulate bot response after delay
-    setTimeout(() => {
+    try {
+      const data = await aiChatAPI(userMessage);
+      setMessages(prev => [...prev, { sender: "bot", text: data.message }]);
+    } catch (err) {
+      setError("Sorry, the AI assistant is currently unavailable. Make sure the backend is running and your GEMINI_API_KEY is set.");
+      setMessages(prev => [...prev, { 
+        sender: "bot", 
+        text: "Sorry, I'm having trouble connecting right now. Please try again in a moment." 
+      }]);
+    } finally {
       setIsTyping(false);
-      setMessages((prev) => [
-        ...prev,
-        {
-          sender: "bot",
-          text: "Sure, here are some top-rated family-friendly cafes in Smouha:",
-          cafes: [
-            {
-              name: "The Cozy Corner",
-              rating: 4.8,
-              reviews: 120,
-              image: "https://images.unsplash.com/photo-1509042239860-f550ce710b93"
-            },
-            {
-              name: "Playground Cafe",
-              rating: 4.7,
-              reviews: 95,
-              image: "https://images.unsplash.com/photo-1555396273-367ea4eb4db5"
-            }
-          ]
-        }
-      ]);
-    }, 2000);
-
-    setMessage("");
+    }
   };
 
   return (
@@ -91,12 +86,19 @@ export default function AIPage() {
       <Sidebar isSidebarOpen={isSidebarOpen} toggleSidebar={toggleSidebar} />
       <Navbar toggleSidebar={toggleSidebar} />
 
+      {/* Error banner */}
+      {error && (
+        <div className="mx-4 mt-2 p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 text-sm text-center">
+          {error}
+        </div>
+      )}
+
       {/* Chat Container */}
       <div className="flex-1 p-5 overflow-y-auto flex flex-col gap-[18px]">
         {messages.map((msg, index) => (
           <div key={index} className={`flex gap-2.5 items-start ${msg.sender === "user" ? 'justify-end' : ''}`}>
             {msg.sender === "bot" && (
-              <img src={aiAvatar} alt="" className="w-10 h-10 rounded-full object-cover" />
+              <img src={aiAvatar} alt="" className="w-10 h-10 rounded-full object-cover flex-shrink-0" />
             )}
             
             <div className="max-w-[70%]">
@@ -108,64 +110,20 @@ export default function AIPage() {
                   : 'bg-[#2a85ec] text-white'
               }`}>
                 {msg.text}
-                
-                {msg.cafes && (
-                  <div className="mt-[14px] flex flex-col gap-3">
-                    {msg.cafes.map((cafe, idx) => (
-                      <div key={idx} className={`flex gap-3 rounded-[16px] p-2.5 items-center transition-colors duration-300 ${
-                        isDarkMode 
-                          ? 'bg-white/5 backdrop-blur-sm border border-white/10' 
-                          : 'bg-white shadow-[0_3px_10px_rgba(0,0,0,0.06)]'
-                      }`}>
-                        <img src={cafe.image} className="w-[85px] h-[75px] rounded-[12px] object-cover" alt="" />
-                        <div className="flex flex-col">
-                          <div className={`font-semibold ${
-                            isDarkMode ? 'text-white' : 'text-[#1e3a5f]'
-                          }`}>{cafe.name}</div>
-                          <div className={`text-[13px] my-1 ${
-                            isDarkMode ? 'text-white/60' : 'text-[#8a94a6]'
-                          }`}>
-                            ⭐ {cafe.rating} ({cafe.reviews} reviews)
-                          </div>
-                          <button 
-                            className="bg-[#2a85ec] border-none text-white py-[7px] px-4 rounded-[20px] text-[13px] cursor-pointer w-fit hover:bg-[#1e6ac7] transition-colors"
-                            onClick={() => navigate("/map")}
-                          >
-                            View on Map
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                    
-                    <div className="flex gap-2.5 mt-2">
-                      <button className={`border-none py-2.5 px-[15px] rounded-[25px] text-[13px] cursor-pointer transition-colors duration-300 ${
-                        isDarkMode
-                          ? 'bg-white/10 text-white backdrop-blur-sm hover:bg-white/20'
-                          : 'bg-[#e9f1ff] text-[#2a85ec] hover:bg-[#d1e0fe]'
-                      }`}>
-                        Find a family cafe
-                      </button>
-                      <button className={`border-none py-2.5 px-[15px] rounded-[25px] text-[13px] cursor-pointer transition-colors duration-300 ${
-                        isDarkMode
-                          ? 'bg-white/10 text-white backdrop-blur-sm hover:bg-white/20'
-                          : 'bg-[#e9f1ff] text-[#2a85ec] hover:bg-[#d1e0fe]'
-                      }`}>
-                        Alternative routes
-                      </button>
-                    </div>
-                  </div>
-                )}
               </div>
             </div>
 
             {msg.sender === "user" && (
-              <img src={userAvatar} alt="" className="w-10 h-10 rounded-full object-cover" />
+              <img src={userAvatar} alt="" className="w-10 h-10 rounded-full object-cover flex-shrink-0" />
             )}
           </div>
         ))}
         
         {/* Typing Indicator */}
         {isTyping && <TypingIndicator isDarkMode={isDarkMode} />}
+        
+        {/* Scroll anchor */}
+        <div ref={messagesEndRef} />
       </div>
 
       {/* Input Area */}
@@ -178,15 +136,20 @@ export default function AIPage() {
           }`}>
             <input
               type="text"
-              placeholder="Ask me anything ..."
+              placeholder="Ask about traffic, restaurants, or anything Wadiny..."
               value={message}
               onChange={(e) => setMessage(e.target.value)}
+              disabled={isTyping}
               className={`flex-1 border-none bg-transparent outline-none text-sm transition-colors duration-300 ${
                 isDarkMode ? 'text-white placeholder:text-white/50' : 'text-[#1e3a5f] placeholder:text-[#94a3b8]'
               }`}
             />
             <FiMic className={isDarkMode ? 'text-white/60 text-xl' : 'text-[#6b7280] text-xl'} />
-            <button type="submit" className="bg-[#2a85ec] border-none w-[34px] h-[34px] rounded-full flex items-center justify-center text-white cursor-pointer hover:bg-[#1e6ac7] transition-colors">
+            <button 
+              type="submit" 
+              disabled={isTyping || !message.trim()}
+              className="bg-[#2a85ec] border-none w-[34px] h-[34px] rounded-full flex items-center justify-center text-white cursor-pointer hover:bg-[#1e6ac7] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
               <FiSend />
             </button>
           </div>

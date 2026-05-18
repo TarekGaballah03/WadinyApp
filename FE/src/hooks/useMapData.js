@@ -1,8 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { fetchPlaces, fetchRoadProblems, createRoadProblem as apiCreateRoadProblem, searchPlaces as apiSearch } from "../services/mapApi";
 import io from "socket.io-client";
-
-const SOCKET_URL = process.env.REACT_APP_API_URL || "http://localhost:5000";
+import { API_BASE_URL } from "../config/apiConfig";
 
 export default function useMapData() {
   const [places, setPlaces] = useState([]);
@@ -31,7 +30,7 @@ export default function useMapData() {
   useEffect(() => {
     loadData();
 
-    const socket = io(SOCKET_URL, { transports: ["websocket"] });
+    const socket = io(API_BASE_URL, { transports: ["websocket", "polling"] });
 
     socket.on("new_road_problem", (problem) => {
       setRoadProblems((prev) => [problem, ...prev]);

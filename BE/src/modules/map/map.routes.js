@@ -1,25 +1,28 @@
-const express = require("express");
-const router = express.Router();
-const mapController = require("./map.controller");
-const { protect, restrictTo } = require("../../middleware/auth.middleware");
+// src/modules/map/map.routes.js
+import { Router } from "express";
+import { authentication, authorization } from "../../middleware/auth.js";
+import { roles } from "../../DB/models/user.model.js";
+import * as MC from "./map.controller.js";
+
+const mapRouter = Router();
 
 // Places
-router.get("/places", mapController.getAllPlaces);
-router.get("/places/:id", mapController.getPlaceById);
-router.post("/places", protect, restrictTo("admin"), mapController.createPlace);
-router.put("/places/:id", protect, restrictTo("admin"), mapController.updatePlace);
-router.delete("/places/:id", protect, restrictTo("admin"), mapController.deletePlace);
+mapRouter.get("/places", MC.getAllPlaces);
+mapRouter.get("/places/:id", MC.getPlaceById);
+mapRouter.post("/places", authentication, authorization([roles.admin]), MC.createPlace);
+mapRouter.put("/places/:id", authentication, authorization([roles.admin]), MC.updatePlace);
+mapRouter.delete("/places/:id", authentication, authorization([roles.admin]), MC.deletePlace);
 
 // Road Problems
-router.get("/road-problems", mapController.getAllRoadProblems);
-router.post("/road-problems", protect, mapController.createRoadProblem);
-router.put("/road-problems/:id/resolve", protect, restrictTo("admin"), mapController.resolveRoadProblem);
-router.delete("/road-problems/:id", protect, restrictTo("admin"), mapController.deleteRoadProblem);
+mapRouter.get("/road-problems", MC.getAllRoadProblems);
+mapRouter.post("/road-problems", authentication, MC.createRoadProblem);
+mapRouter.put("/road-problems/:id/resolve", authentication, authorization([roles.admin]), MC.resolveRoadProblem);
+mapRouter.delete("/road-problems/:id", authentication, authorization([roles.admin]), MC.deleteRoadProblem);
 
 // Navigation
-router.post("/directions", mapController.getDirections);
+mapRouter.post("/directions", MC.getDirections);
 
 // Search
-router.get("/search", mapController.searchPlaces);
+mapRouter.get("/search", MC.searchPlaces);
 
-module.exports = router;
+export default mapRouter;

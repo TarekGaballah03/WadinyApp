@@ -4,6 +4,7 @@ import Sidebar from '../sidebar/Sidebar'
 import Navbar from '../navbar/Navbar'
 import { useTheme } from '../../context/ThemeContext'
 import { useAppContext } from '../../store/AppContext'
+import { useAuth } from '../../context/AuthContext'
 import Swal from 'sweetalert2'
 
 // SVG Icons
@@ -30,6 +31,7 @@ const CommentIcon = ({ isDarkMode }) => (
 export default function ProfilePage() {
   const navigate = useNavigate()
   const { isDarkMode } = useTheme()
+  const { user } = useAuth()
   const { 
     posts, 
     updateUserAvatar,
@@ -51,20 +53,20 @@ export default function ProfilePage() {
   const [previewImage, setPreviewImage] = useState(null)
 
   useEffect(() => {
-    const userEmail = localStorage.getItem('currentUserEmail') || 'user@example.com'
-    const userName = localStorage.getItem('userName') || 'John Doe'
-    const savedAvatar = localStorage.getItem('userAvatar')
-    
+    if (!user) return
+    const avatarUrl = user.image?.secure_url || localStorage.getItem('userAvatar')
     setUserData({
-      name: userName,
-      email: userEmail,
-      phone: localStorage.getItem('userPhone') || '+20 123 456 7890',
+      name: user.name || '',
+      email: user.email || '',
+      phone: user.phone || '',
       bio: localStorage.getItem('userBio') || 'Travel enthusiast | Coffee lover | Exploring hidden gems',
-      joinDate: 'January 2025',
-      avatar: savedAvatar || null,
+      joinDate: user.createdAt
+        ? new Date(user.createdAt).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+        : 'January 2025',
+      avatar: avatarUrl || null,
     })
-    setPreviewImage(savedAvatar || null)
-  }, [])
+    setPreviewImage(avatarUrl || null)
+  }, [user])
 
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen)
 

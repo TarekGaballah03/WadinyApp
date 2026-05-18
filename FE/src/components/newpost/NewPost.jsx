@@ -5,6 +5,8 @@ import Sidebar from '../sidebar/Sidebar'
 import Navbar from '../navbar/Navbar'
 import { useTheme } from '../../context/ThemeContext'
 import { useAppContext } from '../../store/AppContext'
+import { createPostAPI } from '../../services/api'
+import { mapBackendPostToSocial } from '../../utils/postMappers'
 
 export default function NewPostPage() {
   const navigate = useNavigate()
@@ -15,6 +17,7 @@ export default function NewPostPage() {
   const [title, setTitle] = useState('')
   const [experience, setExperience] = useState('')
   const [imagePreview, setImagePreview] = useState(null)
+  const [imageFile, setImageFile] = useState(null)
   const [postType, setPostType] = useState('social')
   const [offerDiscount, setOfferDiscount] = useState('')
   const [offerValidUntil, setOfferValidUntil] = useState('')
@@ -32,6 +35,7 @@ export default function NewPostPage() {
   const handleImageUpload = async (e) => {
     const file = e.target.files[0]
     if (file) {
+      setImageFile(file)
       if (file.size > 5 * 1024 * 1024) {
         await Swal.fire({
           title: 'File Too Large',
@@ -100,27 +104,39 @@ export default function NewPostPage() {
     const userAvatar = localStorage.getItem('userAvatar') || 'https://randomuser.me/api/portraits/lego/1.jpg'
     const userName = localStorage.getItem('userName') || 'You'
 
-    const newPost = {
-      id: Date.now(),
-      name: title,
-      author: userName,
-      time: 'Just now',
-      body: experience,
-      postImage: imagePreview || null,
-      avatarImage: userAvatar,
-      counts: { like: 0, dislike: 0, liked: false, disliked: false },
-      type: postType,
-      gradient: postType === 'hazard' 
-        ? 'linear-gradient(135deg,#c0392b,#e67e22 50%,#f39c12)'
-        : postType === 'offer'
-        ? 'linear-gradient(135deg,#2ecc71,#27ae60 50%,#1e8449)'
-        : 'linear-gradient(135deg,#3d6e8a,#6baed6 50%,#c4a25a)',
-      reviews: [],
-      offerDiscount: postType === 'offer' ? offerDiscount : null,
-      offerValidUntil: postType === 'offer' ? offerValidUntil : null,
-    }
+    try {
+      const result = await createPostAPI({
+        title,
+        body: experience,
+        type: postType,
+        offerDiscount: postType === 'offer' ? offerDiscount : undefined,
+        offerValidUntil: postType === 'offer' ? offerValidUntil : undefined,
+        attachment: imageFile,
+      });
 
-    addNewPost(newPost)
+      if (result?.post) {
+        const saved = mapBackendPostToSocial({
+          ...result.post,
+          author: result.post.author || {
+            name: userName,
+            image: { secure_url: userAvatar },
+          },
+        });
+        addNewPost(saved);
+      }
+    } catch (err) {
+      console.error("Failed to save post to backend:", err.message);
+      await Swal.fire({
+        title: 'Error',
+        text: err.message || 'Could not create post',
+        icon: 'error',
+        confirmButtonColor: '#2B86ED',
+        background: isDarkMode ? '#1a1a2e' : '#fff',
+        color: isDarkMode ? '#fff' : '#000',
+      });
+      setIsPosting(false);
+      return;
+    }
 
     await Swal.fire({
       title: 'Success!',
@@ -155,6 +171,7 @@ export default function NewPostPage() {
 
   const removeImage = async () => {
     setImagePreview(null)
+    setImageFile(null)
     await Swal.fire({
       title: 'Removed',
       text: 'Image has been removed',

@@ -117,7 +117,7 @@ const googleSignup = useGoogleLogin({
         localStorage.setItem("access_token", result.access_token);
         localStorage.setItem("refresh_token", result.refresh_token);
         localStorage.setItem("token_prefix", result.prefix);
-        localStorage.setItem("user_role", result.role);
+        localStorage.setItem("userRole", result.role || "user");
         localStorage.setItem("loggedIn", "true");
         
         toast.success("Google account created successfully! 🚀", { 
