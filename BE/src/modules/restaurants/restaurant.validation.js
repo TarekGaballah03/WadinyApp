@@ -6,12 +6,12 @@ export const createRestaurantSchema = {
     name: joi.string().min(3).max(100).required(),
     location: joi.string().required(),
     address: joi.object({
-      street: joi.string().required(),
+      street: joi.string().allow("").required(),
       city: joi.string().default("Alexandria"),
-      area: joi.string(),
+      area: joi.string().allow("").optional(),
       coordinates: joi.object({
-        lat: joi.number(),
-        lng: joi.number(),
+        lat: joi.number().allow(null).optional(),
+        lng: joi.number().allow(null).optional(),
       }),
     }).required(),
     category: joi.string().valid("cafe", "restaurant", "fastfood", "bakery", "juicebar").required(),
@@ -24,7 +24,7 @@ export const createRestaurantSchema = {
     priceRange: joi.string().valid("$", "$", "$$", "$$"),
     tags: joi.array().items(joi.string()),
   }).required(),
-  file: generalRules.file.required(),
+  file: generalRules.file,
 };
 
 export const updateRestaurantSchema = {
@@ -32,12 +32,12 @@ export const updateRestaurantSchema = {
     name: joi.string().min(3).max(100),
     location: joi.string(),
     address: joi.object({
-      street: joi.string(),
-      city: joi.string(),
-      area: joi.string(),
+      street: joi.string().allow("").optional(),
+      city: joi.string().allow("").optional(),
+      area: joi.string().allow("").optional(),
       coordinates: joi.object({
-        lat: joi.number(),
-        lng: joi.number(),
+        lat: joi.number().allow(null).optional(),
+        lng: joi.number().allow(null).optional(),
       }),
     }),
     category: joi.string().valid("cafe", "restaurant", "fastfood", "bakery", "juicebar"),

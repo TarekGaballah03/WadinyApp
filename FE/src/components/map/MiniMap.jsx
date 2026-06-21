@@ -31,21 +31,40 @@ export default function MiniMap({ height = "280px", showSearch = true, showRepor
   // Init map
   useEffect(() => {
     if (mapRef.current) return;
+    
+    const searchParams = new URLSearchParams(window.location.search);
+    const latParam = parseFloat(searchParams.get("lat"));
+    const lngParam = parseFloat(searchParams.get("lng"));
+    const zoomParam = parseFloat(searchParams.get("zoom")) || 13;
+    const highlightId = searchParams.get("highlight");
+
+    const initialCenter = (!isNaN(latParam) && !isNaN(lngParam)) ? [lngParam, latParam] : [31.2357, 30.0444]; // Cairo default
+
     mapRef.current = new maplibregl.Map({
       container: mapContainer.current,
       style: "https://tiles.openfreemap.org/styles/liberty",
-      center: [31.2357, 30.0444], // Cairo default
-      zoom: 13,
+      center: initialCenter,
+      zoom: (!isNaN(latParam) && !isNaN(lngParam)) ? zoomParam : 13,
       attributionControl: false,
     });
 
     mapRef.current.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
 
+    if (!isNaN(latParam) && !isNaN(lngParam) && highlightId) {
+       new maplibregl.Marker({ color: "#FF1493" })
+        .setLngLat([lngParam, latParam])
+        .addTo(mapRef.current);
+    }
+
     // Try get user location
     navigator.geolocation?.getCurrentPosition(({ coords }) => {
       const { latitude: lat, longitude: lng } = coords;
       setUserLocation([lng, lat]);
-      mapRef.current.flyTo({ center: [lng, lat], zoom: 14 });
+      
+      // Only fly to user location if no specific location was requested in URL
+      if (isNaN(latParam) || isNaN(lngParam)) {
+        mapRef.current.flyTo({ center: [lng, lat], zoom: 14 });
+      }
 
       new maplibregl.Marker({ color: "#1E90FF" })
         .setLngLat([lng, lat])

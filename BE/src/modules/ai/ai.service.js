@@ -24,14 +24,23 @@ export const chat = asyncHandler(async (req, res, next) => {
     `- ${r.issueType} at ${r.location || "unknown location"}: ${r.note || "No details"}`
   ).join("\n");
 
-  const restaurantContext = restaurants.map(rest => 
-    `- ${rest.name} (${rest.category}) in ${rest.address?.area || rest.location}: Rating ${rest.avgRating}/5. Tags: ${rest.tags?.join(", ") || "none"}`
-  ).join("\n");
+  const restaurantContext = restaurants.map(rest => {
+    const data = {
+      id: rest._id,
+      name: rest.name,
+      lat: rest.address?.coordinates?.lat || null,
+      lng: rest.address?.coordinates?.lng || null,
+      image: rest.image?.secure_url || null,
+      rating: rest.avgRating || 0,
+      category: rest.category
+    };
+    return `- ${rest.name} (${rest.category}) in ${rest.address?.area || rest.location}: Rating ${rest.avgRating}/5. Tags: ${rest.tags?.join(", ") || "none"}. JSON_DATA: ${JSON.stringify(data)}`;
+  }).join("\n");
 
   // 3. Initialize Gemini
   const genAI = new GoogleGenerativeAI(apiKey);
   const model = genAI.getGenerativeModel({ 
-    model: "gemini-1.5-flash",
+    model: "gemini-2.5-flash",
     systemInstruction: `You are the Wadiny Assistant, a helpful AI integrated into the Wadiny mapping and social app. 
     Your goal is to help users navigate their city (Alexandria), find great places to eat, and stay safe on the road.
     
@@ -45,6 +54,7 @@ export const chat = asyncHandler(async (req, res, next) => {
     Rules:
     - If a user asks about traffic or hazards, refer to the data provided above.
     - If a user asks for recommendations, suggest the restaurants listed above.
+    - WHEN RECOMMENDING A RESTAURANT, you MUST include its data block EXACTLY in this format on a new line: [PLACE: {"id":"...","name":"...","lat":...,"lng":...,"image":"...","rating":...,"category":"..."}] using the JSON_DATA provided.
     - If the user asks for something not in the data, answer generally but mention you are specifically the Wadiny Assistant.
     - Be friendly, concise, and helpful.`
   });
