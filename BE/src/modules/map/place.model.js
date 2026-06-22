@@ -16,7 +16,6 @@ const placeSchema = new mongoose.Schema(
     coverImage: { type: String },
     images: [String],
 
-    // GeoJSON point — enables $geoWithin / $near queries
     location: {
       type: {
         type: String,
@@ -24,7 +23,7 @@ const placeSchema = new mongoose.Schema(
         default: "Point",
       },
       coordinates: {
-        type: [Number], // [lng, lat]
+        type: [Number], 
         required: true,
       },
     },

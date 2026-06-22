@@ -4,11 +4,11 @@ export const sendEmail = async ({ to, subject, html, attachments = [] }) => {
   try {
     console.log(`📧 Preparing to send email to: ${to}`);
     
-    // ⭐ استخدام SMTP مباشرة مع إعدادات متوافقة
     const transporter = nodemailer.createTransport({
       host: "smtp.gmail.com",
       port: 587,
-      secure: false, // true for 465, false for other ports
+      family: 4,
+      secure: false, 
       auth: {
         user: process.env.email,
         pass: process.env.password,
@@ -17,7 +17,6 @@ export const sendEmail = async ({ to, subject, html, attachments = [] }) => {
         rejectUnauthorized: false,
         ciphers: "SSLv3",
       },
-      // ⭐ إضافة هذه الإعدادات المهمة
       requireTLS: true,
       connectionTimeout: 10000,
     });
