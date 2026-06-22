@@ -1,8 +1,10 @@
+// src/components/details/DetailsPage.jsx
 import React, { useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import Sidebar from '../sidebar/Sidebar'
 import Navbar from '../navbar/Navbar'
 import { useTheme } from '../../context/ThemeContext'
+import { getRestaurantByIdAPI } from '../../services/restaurantAPI'
 
 /* ─── Redeem Popup Component ─── */
 function RedeemPopup({ isOpen, onClose, isDarkMode, offerTitle, offerCode }) {
@@ -147,6 +149,62 @@ export default function DetailsPage() {
     return 'Details'
   }
 
+  // ⭐⭐ دالة للتعامل مع View on Map (معدلة نهائياً) ⭐⭐
+  const handleViewOnMap = async () => {
+    
+    console.log('🔍 handleViewOnMap - data:', data);
+    console.log('🔍 data.restaurantId:', data?.restaurantId);
+    console.log('🔍 data.address:', data?.address);
+    
+    // محاولة استخراج الإحداثيات من مصادر مختلفة
+    let lat, lng, id;
+    
+    // 1️⃣ من الـ data (لو فيه address.coordinates مباشر)
+    if (data?.address?.coordinates) {
+      lat = data.address.coordinates.lat;
+      lng = data.address.coordinates.lng;
+      id = data._id || data.id;
+      console.log('📍 Found coordinates in data.address:', { lat, lng });
+    } 
+    // 2️⃣ من الـ item
+    else if (item?.coordinates) {
+      lat = item.coordinates.lat;
+      lng = item.coordinates.lng;
+      id = item.id;
+      console.log('📍 Found coordinates in item:', { lat, lng });
+    }
+    // 3️⃣ من الـ offer (عندها restaurantId)
+    else if (data?.restaurantId) {
+      try {
+        console.log('🔄 Fetching restaurant by ID:', data.restaurantId);
+        const result = await getRestaurantByIdAPI(data.restaurantId);
+        console.log('📦 Restaurant data:', result);
+        
+        // نجيب الإحداثيات من الـ restaurant
+        if (result.restaurant?.address?.coordinates) {
+          lat = result.restaurant.address.coordinates.lat;
+          lng = result.restaurant.address.coordinates.lng;
+          id = data.restaurantId;
+          console.log('📍 Found coordinates from restaurant:', { lat, lng });
+        } else {
+          console.log('❌ No coordinates found in restaurant data');
+        }
+      } catch (error) {
+        console.error('Error fetching restaurant for offer:', error);
+      }
+    }
+    
+    // لو لقينا إحداثيات
+    if (lat && lng) {
+      console.log('✅ Navigating to map with:', { lat, lng, id });
+      navigate(`/map?lat=${lat}&lng=${lng}&zoom=16&highlight=${id || ''}`);
+    } else {
+      console.log('⚠️ No coordinates found, going to map without location');
+      // لو مفيش إحداثيات، نروح للـ Map العادي
+      navigate('/map');
+    }
+  };
+
   return (
     <div className={`min-h-screen transition-colors duration-300 ${isDarkMode ? 'bg-[#0a0f1a]' : 'bg-gray-50'}`}>
       <Sidebar isSidebarOpen={isSidebarOpen} toggleSidebar={toggleSidebar} />
@@ -229,34 +287,34 @@ export default function DetailsPage() {
             </div>
           )}
 
-          {/* Offer Banner - مع زر Redeem جوه الفريم */}
- {/* Offer Banner - خلفية برتقالية، زر برتقالي غامق */}
-{isOffer && (
-  <div className={`mb-4 p-3 rounded-xl flex items-center justify-between gap-2 transition-all duration-300 ${
-    isDarkMode 
-      ? 'bg-orange-500/20 border border-orange-500/30 hover:bg-orange-500/30' 
-      : 'bg-orange-500/10 border border-orange-200 hover:bg-orange-500/15'
-  }`}>
-    <div className="flex items-center gap-2">
-      <svg className="w-5 h-5 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" />
-      </svg>
-      <span className={`text-sm font-medium ${isDarkMode ? 'text-orange-400' : 'text-orange-600'}`}>
-        Limited Time Offer - {item.validUntil}
-      </span>
-    </div>
-    <button
-      onClick={() => setIsRedeemPopupOpen(true)}
-      className={`text-[10px] uppercase tracking-wider font-bold py-1.5 px-3 rounded-lg transition-all duration-300 active:scale-95 shadow-sm ${
-        isDarkMode
-          ? 'bg-orange-500 text-white hover:bg-orange-600 hover:scale-105'
-          : 'bg-orange-500 text-white hover:bg-orange-600 hover:scale-105'
-      }`}
-    >
-      🎁 Redeem
-    </button>
-  </div>
-)}
+          {/* Offer Banner - مع زر Redeem */}
+          {isOffer && (
+            <div className={`mb-4 p-3 rounded-xl flex items-center justify-between gap-2 transition-all duration-300 ${
+              isDarkMode 
+                ? 'bg-orange-500/20 border border-orange-500/30 hover:bg-orange-500/30' 
+                : 'bg-orange-500/10 border border-orange-200 hover:bg-orange-500/15'
+            }`}>
+              <div className="flex items-center gap-2">
+                <svg className="w-5 h-5 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" />
+                </svg>
+                <span className={`text-sm font-medium ${isDarkMode ? 'text-orange-400' : 'text-orange-600'}`}>
+                  Limited Time Offer - {item.validUntil}
+                </span>
+              </div>
+              <button
+                onClick={() => setIsRedeemPopupOpen(true)}
+                className={`text-[10px] uppercase tracking-wider font-bold py-1.5 px-3 rounded-lg transition-all duration-300 active:scale-95 shadow-sm ${
+                  isDarkMode
+                    ? 'bg-orange-500 text-white hover:bg-orange-600 hover:scale-105'
+                    : 'bg-orange-500 text-white hover:bg-orange-600 hover:scale-105'
+                }`}
+              >
+                🎁 Redeem
+              </button>
+            </div>
+          )}
+
           {/* Hazard Severity */}
           {isHazard && (
             <div className="flex items-center justify-between flex-wrap gap-3 pb-4 border-b border-gray-200 dark:border-gray-700">
@@ -350,11 +408,11 @@ export default function DetailsPage() {
           )}
         </div>
 
-        {/* Action Buttons */}
+        {/* ⭐ Action Buttons ⭐ */}
         <div className="space-y-3">
-          {/* View on Map - أحمر للـ Hazard، أزرق للباقي */}
+          {/* View on Map */}
           <button
-            onClick={() => navigate('/map', { state: { location: item.location } })}
+            onClick={handleViewOnMap}
             className={`w-full py-3.5 rounded-full font-semibold text-base transition-all hover:scale-[1.02] active:scale-95 ${
               isHazard
                 ? 'bg-red-500 text-white hover:bg-red-600'

@@ -1,3 +1,4 @@
+// src/components/newpost/NewPost.jsx
 import React, { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import Swal from 'sweetalert2'
@@ -19,8 +20,6 @@ export default function NewPostPage() {
   const [imagePreview, setImagePreview] = useState(null)
   const [imageFile, setImageFile] = useState(null)
   const [postType, setPostType] = useState('social')
-  const [offerDiscount, setOfferDiscount] = useState('')
-  const [offerValidUntil, setOfferValidUntil] = useState('')
   const [isPosting, setIsPosting] = useState(false)
 
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen)
@@ -87,18 +86,6 @@ export default function NewPostPage() {
       return
     }
 
-    if (postType === 'offer' && !offerDiscount.trim()) {
-      await Swal.fire({
-        title: 'Missing Offer Details',
-        text: 'Please enter the discount/offer details',
-        icon: 'warning',
-        confirmButtonColor: '#2B86ED',
-        background: isDarkMode ? '#1a1a2e' : '#fff',
-        color: isDarkMode ? '#fff' : '#000',
-      })
-      return
-    }
-
     setIsPosting(true)
 
     const userAvatar = localStorage.getItem('userAvatar') || 'https://randomuser.me/api/portraits/lego/1.jpg'
@@ -109,8 +96,6 @@ export default function NewPostPage() {
         title,
         body: experience,
         type: postType,
-        offerDiscount: postType === 'offer' ? offerDiscount : undefined,
-        offerValidUntil: postType === 'offer' ? offerValidUntil : undefined,
         attachment: imageFile,
       });
 
@@ -140,7 +125,7 @@ export default function NewPostPage() {
 
     await Swal.fire({
       title: 'Success!',
-      text: postType === 'offer' ? 'Your offer has been created successfully!' : 'Your post has been created successfully!',
+      text: 'Your post has been created successfully!',
       icon: 'success',
       confirmButtonColor: '#2B86ED',
       background: isDarkMode ? '#1a1a2e' : '#fff',
@@ -152,17 +137,10 @@ export default function NewPostPage() {
     setTitle('')
     setExperience('')
     setImagePreview(null)
-    setOfferDiscount('')
-    setOfferValidUntil('')
     setPostType('social')
     setIsPosting(false)
 
-    // لو كان Offer، يودي لصفحة الـ Recommendations
-    if (postType === 'offer') {
-      navigate('/offers')
-    } else {
-      navigate('/social')
-    }
+    navigate('/social')
   }
 
   const triggerFileInput = () => {
@@ -206,7 +184,7 @@ export default function NewPostPage() {
           Create New Post
         </h1>
         <p className={`text-sm mt-2 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-          Share an update, offer, or report a road hazard
+          Share an update or report a road hazard
         </p>
       </div>
 
@@ -217,15 +195,15 @@ export default function NewPostPage() {
             : 'bg-white shadow-sm'
         }`}>
           
-          {/* Post Type Selection - 3 أزرار جنب بعض مع تكبير العرض */}
+          {/* Post Type Selection - زرين جنب بعض */}
           <div className="mb-6">
             <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
               Post Type
             </label>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 gap-3">
               <button
                 onClick={() => handlePostTypeChange('social')}
-                className={`py-3 px-2 rounded-xl font-medium transition-all duration-300 text-sm md:text-base whitespace-nowrap ${
+                className={`py-3 px-4 rounded-xl font-medium transition-all duration-300 text-sm md:text-base ${
                   postType === 'social'
                     ? 'bg-[#2B86ED] text-white shadow-md'
                     : isDarkMode 
@@ -233,31 +211,14 @@ export default function NewPostPage() {
                       : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                 }`}
               >
-                <span className="flex items-center justify-center gap-1">
+                <span className="flex items-center justify-center gap-2">
                   <span>📝</span>
-                  <span className="hidden sm:inline">Community</span>
-                  <span className="sm:hidden">Post</span>
-                </span>
-              </button>
-              <button
-                onClick={() => handlePostTypeChange('offer')}
-                className={`py-3 px-2 rounded-xl font-medium transition-all duration-300 text-sm md:text-base whitespace-nowrap ${
-                  postType === 'offer'
-                    ? 'bg-green-500 text-white shadow-md'
-                    : isDarkMode 
-                      ? 'bg-white/10 text-gray-300 hover:bg-white/20'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}
-              >
-                <span className="flex items-center justify-center gap-1">
-                  <span>🏷️</span>
-                  <span className="hidden sm:inline">Offer</span>
-                  <span className="sm:hidden">Deal</span>
+                  <span>Community Post</span>
                 </span>
               </button>
               <button
                 onClick={() => handlePostTypeChange('hazard')}
-                className={`py-3 px-2 rounded-xl font-medium transition-all duration-300 text-sm md:text-base whitespace-nowrap ${
+                className={`py-3 px-4 rounded-xl font-medium transition-all duration-300 text-sm md:text-base ${
                   postType === 'hazard'
                     ? 'bg-red-500 text-white shadow-md'
                     : isDarkMode 
@@ -265,10 +226,9 @@ export default function NewPostPage() {
                       : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                 }`}
               >
-                <span className="flex items-center justify-center gap-1">
+                <span className="flex items-center justify-center gap-2">
                   <span>⚠️</span>
-                  <span className="hidden sm:inline">Hazard</span>
-                  <span className="sm:hidden">Report</span>
+                  <span>Report Hazard</span>
                 </span>
               </button>
             </div>
@@ -330,16 +290,12 @@ export default function NewPostPage() {
             <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
               {postType === 'hazard' 
                 ? 'Hazard Location' 
-                : postType === 'offer'
-                ? 'Business / Place Name'
                 : 'Title / Place Name'}
             </label>
             <input 
               type="text"
               placeholder={postType === 'hazard' 
                 ? "e.g., Main Street, Highway 101..." 
-                : postType === 'offer'
-                ? "e.g., Starbucks, Pizza Hut, Local Cafe..."
                 : "e.g., Woods Cafe, My Experience..."}
               className={`w-full px-4 py-3 rounded-xl border transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-[#2B86ED] ${
                 isDarkMode 
@@ -351,59 +307,16 @@ export default function NewPostPage() {
             />
           </div>
 
-          {/* Offer Discount Field - يظهر بس لو type offer */}
-          {postType === 'offer' && (
-            <div className="mb-6">
-              <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                🏷️ Offer / Discount Details
-              </label>
-              <input 
-                type="text"
-                placeholder="e.g., 20% off, Buy 1 Get 1 Free, $5 off..."
-                className={`w-full px-4 py-3 rounded-xl border transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-green-500 ${
-                  isDarkMode 
-                    ? 'bg-white/5 border-white/20 text-white placeholder:text-gray-500 focus:border-transparent' 
-                    : 'bg-white border-gray-200 text-gray-900 placeholder:text-gray-400 focus:border-green-500'
-                }`}
-                value={offerDiscount}
-                onChange={(e) => setOfferDiscount(e.target.value)}
-              />
-            </div>
-          )}
-
-          {/* Offer Valid Until - يظهر بس لو type offer */}
-          {postType === 'offer' && (
-            <div className="mb-6">
-              <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                📅 Valid Until (Optional)
-              </label>
-              <input 
-                type="date"
-                className={`w-full px-4 py-3 rounded-xl border transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-green-500 ${
-                  isDarkMode 
-                    ? 'bg-white/5 border-white/20 text-white placeholder:text-gray-500 focus:border-transparent' 
-                    : 'bg-white border-gray-200 text-gray-900 focus:border-green-500'
-                }`}
-                value={offerValidUntil}
-                onChange={(e) => setOfferValidUntil(e.target.value)}
-              />
-            </div>
-          )}
-
           {/* Experience Description */}
           <div className="mb-6">
             <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
               {postType === 'hazard' 
                 ? 'Hazard Description' 
-                : postType === 'offer'
-                ? 'Offer Description'
                 : 'Your Story'}
             </label>
             <textarea 
               placeholder={postType === 'hazard' 
                 ? "Describe the hazard (pothole, closure, accident, etc.)..." 
-                : postType === 'offer'
-                ? "Describe the offer, terms, and how to redeem..."
                 : "Share your experience, thoughts, or recommendation..."}
               rows="4"
               className={`w-full px-4 py-3 rounded-xl border transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-[#2B86ED] resize-none ${
@@ -419,22 +332,16 @@ export default function NewPostPage() {
           {/* Post Button */}
           <button 
             onClick={handlePost}
-            disabled={!title.trim() || !experience.trim() || (postType === 'offer' && !offerDiscount.trim()) || isPosting}
+            disabled={!title.trim() || !experience.trim() || isPosting}
             className={`w-full py-3 rounded-xl font-bold text-white transition-all duration-300 ${
-              !title.trim() || !experience.trim() || (postType === 'offer' && !offerDiscount.trim()) || isPosting
+              !title.trim() || !experience.trim() || isPosting
                 ? 'bg-gray-400 cursor-not-allowed opacity-50'
                 : postType === 'hazard'
                   ? 'bg-red-500 hover:bg-red-600 transform hover:scale-[1.02] active:scale-98 shadow-lg'
-                  : postType === 'offer'
-                  ? 'bg-green-500 hover:bg-green-600 transform hover:scale-[1.02] active:scale-98 shadow-lg'
                   : 'bg-[#2B86ED] hover:bg-[#1a6edb] transform hover:scale-[1.02] active:scale-98 shadow-lg'
             }`}
           >
-            {isPosting 
-              ? 'Posting...' 
-              : postType === 'offer' 
-              ? 'Share Offer' 
-              : 'Post Now'}
+            {isPosting ? 'Posting...' : 'Post Now'}
           </button>
         </div>
 
@@ -448,29 +355,21 @@ export default function NewPostPage() {
             <div className={`p-2 rounded-full ${
               postType === 'hazard' 
                 ? 'bg-red-100' 
-                : postType === 'offer'
-                ? 'bg-green-100'
                 : 'bg-blue-100'
             }`}>
               {postType === 'hazard' 
                 ? '⚠️' 
-                : postType === 'offer'
-                ? '🏷️'
                 : '📝'}
             </div>
             <div>
               <p className={`text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                 {postType === 'hazard' 
                   ? 'Help keep our community safe!' 
-                  : postType === 'offer'
-                  ? 'Share great deals with the community!'
                   : 'Share your experience with the community!'}
               </p>
               <p className={`text-xs mt-0.5 ${isDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
                 {postType === 'hazard'
                   ? 'Report road hazards to alert other drivers'
-                  : postType === 'offer'
-                  ? 'Post exclusive deals and offers for everyone'
                   : 'Share updates, recommendations, and connect with others'}
               </p>
             </div>

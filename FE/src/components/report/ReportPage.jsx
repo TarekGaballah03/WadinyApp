@@ -1,10 +1,13 @@
-import React, { useState, useEffect } from "react";
-import { Camera, Video, ChevronDown } from "lucide-react";
+// src/components/report/ReportPage.jsx
+import React, { useState, useEffect, useRef } from "react";
+import { Camera, Video, ChevronDown, MapPin, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import Sidebar from "../sidebar/Sidebar";
 import Navbar from "../navbar/Navbar";
 import { useTheme } from "../../context/ThemeContext";
 import { submitReportAPI } from "../../services/api";
+import maplibregl from "maplibre-gl";
+import "maplibre-gl/dist/maplibre-gl.css";
 
 export default function ReportPage() {
   const { isDarkMode } = useTheme();
@@ -14,7 +17,6 @@ export default function ReportPage() {
   useEffect(() => {
     setIsLoggedIn(localStorage.getItem("loggedIn") === "true");
     
-    // لو مش مسجل، نفتح المودال
     if (localStorage.getItem("loggedIn") !== "true") {
       if (window.openAuthModal) {
         window.openAuthModal();
@@ -30,13 +32,150 @@ export default function ReportPage() {
   const [note, setNote] = useState("");
   const [showPopup, setShowPopup] = useState(false);
   const [shareToSocial, setShareToSocial] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  const [selectedLocation, setSelectedLocation] = useState(null);
+  const [showMapModal, setShowMapModal] = useState(false);
+  const [locationAddress, setLocationAddress] = useState("");
+
+  const mapContainer = useRef(null);
+  const mapRef = useRef(null);
+  const markerRef = useRef(null);
+  const userMarkerRef = useRef(null);
 
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
 
-  // لو مش مسجل، ما نعرضش محتوى الصفحة
   if (!isLoggedIn) {
     return null;
   }
+
+  // ============= Map Modal Functions =============
+  const openMapModal = () => {
+    setShowMapModal(true);
+    setTimeout(() => {
+      initMap();
+    }, 300);
+  };
+
+  const closeMapModal = () => {
+    setShowMapModal(false);
+    if (mapRef.current) {
+      mapRef.current.remove();
+      mapRef.current = null;
+    }
+  };
+
+  const initMap = () => {
+    if (mapRef.current) return;
+
+    const defaultCenter = [31.2357, 30.0444];
+
+    mapRef.current = new maplibregl.Map({
+      container: mapContainer.current,
+      style: "https://tiles.openfreemap.org/styles/liberty",
+      center: defaultCenter,
+      zoom: 13,
+      attributionControl: false,
+    });
+
+    mapRef.current.addControl(
+      new maplibregl.NavigationControl({ showCompass: false }),
+      "top-right"
+    );
+
+    const el = document.createElement("div");
+    el.style.cssText = `
+      width: 44px;
+      height: 44px;
+      background: #FF3B30;
+      border-radius: 50%;
+      border: 3px solid white;
+      box-shadow: 0 0 25px rgba(255, 59, 48, 0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      cursor: grab;
+      transition: transform 0.2s;
+    `;
+    el.innerHTML = "📍";
+
+    markerRef.current = new maplibregl.Marker({ 
+      element: el,
+      draggable: true 
+    })
+      .setLngLat(defaultCenter)
+      .addTo(mapRef.current);
+
+    markerRef.current.on("dragend", () => {
+      const lngLat = markerRef.current.getLngLat();
+      const lat = lngLat.lat;
+      const lng = lngLat.lng;
+      setSelectedLocation({ lat, lng });
+      getAddressFromCoords(lat, lng);
+    });
+
+    navigator.geolocation?.getCurrentPosition(
+      ({ coords }) => {
+        const { latitude: lat, longitude: lng } = coords;
+        mapRef.current.flyTo({ center: [lng, lat], zoom: 15 });
+        markerRef.current.setLngLat([lng, lat]);
+        setSelectedLocation({ lat, lng });
+        getAddressFromCoords(lat, lng);
+
+        const userEl = document.createElement("div");
+        userEl.style.cssText = `
+          width: 16px;
+          height: 16px;
+          background: #1E90FF;
+          border-radius: 50%;
+          border: 2px solid white;
+          box-shadow: 0 0 20px rgba(30, 144, 255, 0.6);
+        `;
+        userMarkerRef.current = new maplibregl.Marker({ element: userEl })
+          .setLngLat([lng, lat])
+          .addTo(mapRef.current);
+      },
+      () => {
+        console.log("Could not get location");
+      }
+    );
+
+    mapRef.current.on("click", (e) => {
+      const { lng, lat } = e.lngLat;
+      markerRef.current.setLngLat([lng, lat]);
+      setSelectedLocation({ lat, lng });
+      getAddressFromCoords(lat, lng);
+    });
+  };
+
+  const getAddressFromCoords = async (lat, lng) => {
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`
+      );
+      const data = await response.json();
+      if (data && data.display_name) {
+        setLocationAddress(data.display_name);
+      } else {
+        setLocationAddress(`${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+      }
+    } catch (error) {
+      console.error("Error getting address:", error);
+      setLocationAddress(`${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+    }
+  };
+
+  const confirmLocation = () => {
+    if (selectedLocation) {
+      if (!locationAddress) {
+        getAddressFromCoords(selectedLocation.lat, selectedLocation.lng);
+      }
+      closeMapModal();
+    } else {
+      alert("Please select a location on the map first.");
+    }
+  };
 
   const handleUpload = (e) => {
     const uploaded = e.target.files[0];
@@ -46,33 +185,58 @@ export default function ReportPage() {
     }
   };
 
+  // ============= handleSubmit المعدل (شيلنا createPostAPI) =============
   const handleSubmit = async () => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+
     try {
-      await submitReportAPI({
+      // بناء بيانات التقرير
+      const reportData = {
         issueType: issue,
         note: note || undefined,
         sharedToFeed: shareToSocial,
         media: file || undefined,
-      });
-    } catch (err) {
-      console.error('Report submission failed:', err.message);
-    }
+      };
 
-    // Show success popup regardless (offline-friendly)
-    setShowPopup(true);
-    setFile(null);
-    setPreview(null);
-    setNote("");
-    setIssue("Pothole");
-
-    setTimeout(() => {
-      setShowPopup(false);
-      if (shareToSocial) {
-        navigate('/social');
-      } else {
-        navigate('/home');
+      if (selectedLocation) {
+        reportData.lat = selectedLocation.lat;
+        reportData.lng = selectedLocation.lng;
       }
-    }, 3000);
+
+      if (locationAddress) {
+        reportData.location = locationAddress;
+      }
+
+      console.log("📤 Submitting report:", reportData);
+      
+      const reportResult = await submitReportAPI(reportData);
+      console.log("✅ Report submitted:", reportResult);
+
+      setShowPopup(true);
+      setFile(null);
+      setPreview(null);
+      setNote("");
+      setIssue("Pothole");
+      setSelectedLocation(null);
+      setLocationAddress("");
+
+      setTimeout(() => {
+        setShowPopup(false);
+        setIsSubmitting(false);
+        if (shareToSocial) {
+          navigate('/social');
+        } else {
+          navigate('/home');
+        }
+      }, 3000);
+
+    } catch (err) {
+      console.error('❌ Report submission failed:', err);
+      console.error('❌ Error details:', err.data);
+      alert(`Failed to submit report: ${err.message}`);
+      setIsSubmitting(false);
+    }
   };
 
   const issueOptions = [
@@ -214,7 +378,7 @@ export default function ReportPage() {
           </div>
         )}
 
-        {/* Share to Social Feed - اختياري */}
+        {/* Share to Social Feed */}
         <div className={`rounded-2xl p-4 transition-all duration-300 ${
           isDarkMode
             ? 'bg-white/10 backdrop-blur-md border border-white/20'
@@ -259,28 +423,56 @@ export default function ReportPage() {
             ? 'bg-white/10 backdrop-blur-md border-white/20'
             : 'bg-white border-[#eef3f8]'
         }`}>
-          <img
-            src="https://images.unsplash.com/photo-1524661135-423995f22d0b?q=80&w=1200&auto=format&fit=crop"
-            alt="map"
-            className="w-full h-[170px] object-cover"
-          />
+          <div 
+            className="w-full h-[120px] bg-cover bg-center relative cursor-pointer"
+            style={{
+              backgroundImage: selectedLocation 
+                ? `url(https://api.mapbox.com/styles/v1/mapbox/light-v10/static/pin-s(${selectedLocation.lng},${selectedLocation.lat})/${selectedLocation.lng},${selectedLocation.lat},14,0/400x120?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4NXVycTA2emYycXBndHRqcmZ3N3gifQ.rJcFIG214AriISLbB6B5aw)`
+                : 'https://images.unsplash.com/photo-1524661135-423995f22d0b?q=80&w=1200&auto=format&fit=crop'
+            }}
+            onClick={openMapModal}
+          >
+            <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
+              <div className={`flex items-center gap-2 px-4 py-2 rounded-full ${
+                isDarkMode 
+                  ? 'bg-black/50 backdrop-blur-sm text-white' 
+                  : 'bg-white/90 text-[#1e3a5f]'
+              }`}>
+                <MapPin size={18} />
+                <span className="text-sm font-medium">
+                  {selectedLocation ? '📍 Location Selected' : 'Select Location'}
+                </span>
+              </div>
+            </div>
+          </div>
+
           <div className="p-5">
             <h4 className={`text-base font-semibold mb-1.5 transition-colors duration-300 ${
               isDarkMode ? 'text-white' : 'text-[#1e3a5f]'
             }`}>
               Pin Location on Map
             </h4>
+            {locationAddress && (
+              <p className={`text-xs mb-2 transition-colors duration-300 ${
+                isDarkMode ? 'text-white/50' : 'text-[#64748b]'
+              }`}>
+                📍 {locationAddress}
+              </p>
+            )}
             <p className={`text-sm mb-[18px] transition-colors duration-300 ${
               isDarkMode ? 'text-white/60' : 'text-[#64748b]'
             }`}>
-              Tap to select the location of the issue
+              Tap the map above to select the location
             </p>
-            <button className={`block mx-auto border-none py-[14px] px-9 rounded-[40px] text-base font-semibold cursor-pointer shadow-[0_6px_14px_rgba(26,92,158,0.3)] w-fit transition-all duration-300 ${
-              isDarkMode
-                ? 'bg-[#1a5c9e]/80 text-white hover:bg-[#1a5c9e]'
-                : 'bg-[#5f8fce] text-white hover:bg-[#4a7bb3]'
-            }`}>
-              Select Location
+            <button 
+              className={`block mx-auto border-none py-[14px] px-9 rounded-[40px] text-base font-semibold cursor-pointer shadow-[0_6px_14px_rgba(26,92,158,0.3)] w-fit transition-all duration-300 ${
+                isDarkMode
+                  ? 'bg-[#1a5c9e]/80 text-white hover:bg-[#1a5c9e]'
+                  : 'bg-[#5f8fce] text-white hover:bg-[#4a7bb3]'
+              }`}
+              onClick={openMapModal}
+            >
+              {selectedLocation ? 'Change Location' : 'Select Location'}
             </button>
           </div>
         </div>
@@ -291,14 +483,52 @@ export default function ReportPage() {
             isDarkMode
               ? 'bg-gradient-to-b from-[#2a85ec] to-[#1a5c9e] backdrop-blur-lg border border-white/20 text-white hover:from-[#1a5c9e] hover:to-[#0a3a6b]'
               : 'bg-gradient-to-b from-[#6ea1e1] to-[#3f6aa0] text-white hover:from-[#5f8fce] hover:to-[#2c5282]'
-          }`}
+          } ${isSubmitting ? 'opacity-50 cursor-not-allowed' : ''}`}
           onClick={handleSubmit}
+          disabled={isSubmitting}
         >
-          Submit Report
+          {isSubmitting ? 'Submitting...' : 'Submit Report'}
         </button>
       </div>
 
-      {/* Popup - الوحيدة اللي هتظهر دلوقتي */}
+      {/* Map Modal */}
+      {showMapModal && (
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="relative w-full max-w-[500px] h-[80vh] max-h-[600px] m-4 rounded-3xl overflow-hidden shadow-2xl">
+            <div ref={mapContainer} className="w-full h-full" />
+
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 bg-black/50 backdrop-blur-md rounded-full px-4 py-2 text-white text-sm font-medium">
+              📍 Drag the marker or click to select
+            </div>
+
+            <button
+              onClick={closeMapModal}
+              className="absolute top-4 right-4 z-10 w-10 h-10 rounded-full bg-black/50 backdrop-blur-md text-white hover:bg-black/70 transition-all duration-300 flex items-center justify-center"
+            >
+              <X size={20} />
+            </button>
+
+            <button
+              onClick={confirmLocation}
+              className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10 px-8 py-3 rounded-full bg-[#4A90D9] text-white font-semibold shadow-lg hover:bg-[#3A7BC8] transition-all duration-300"
+            >
+              ✓ Confirm Location
+            </button>
+
+            {selectedLocation && (
+              <div className={`absolute bottom-20 left-1/2 -translate-x-1/2 z-10 px-4 py-2 rounded-full text-xs font-medium max-w-[90%] truncate ${
+                isDarkMode
+                  ? 'bg-black/60 backdrop-blur-md text-white/80'
+                  : 'bg-white/90 backdrop-blur-md text-gray-700'
+              }`}>
+                📍 {locationAddress || `${selectedLocation.lat.toFixed(5)}, ${selectedLocation.lng.toFixed(5)}`}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Success Popup */}
       {showPopup && (
         <div className={`fixed inset-0 flex items-center justify-center z-[999] ${
           isDarkMode ? 'bg-black/50 backdrop-blur-md' : 'bg-black/25'

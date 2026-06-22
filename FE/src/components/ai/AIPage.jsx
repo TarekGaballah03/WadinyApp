@@ -1,8 +1,8 @@
+// src/components/ai/AIPage.jsx
 import React, { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { FiMic, FiSend } from "react-icons/fi";
 import aiAvatar from "../../assets/ai.jpg";
-import userAvatar from "../../assets/avatar.jpg";
 import Sidebar from "../../components/sidebar/Sidebar";
 import Navbar from "../../components/navbar/Navbar";
 import { useTheme } from "../../context/ThemeContext";
@@ -45,9 +45,21 @@ export default function AIPage() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [error, setError] = useState(null);
+  const [userAvatar, setUserAvatar] = useState(null);
   const messagesEndRef = useRef(null);
 
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
+
+  // ⭐ جلب صورة المستخدم من localStorage
+  useEffect(() => {
+    const avatar = localStorage.getItem('userAvatar');
+    if (avatar) {
+      setUserAvatar(avatar);
+    } else {
+      // صورة افتراضية لو مفيش
+      setUserAvatar('https://randomuser.me/api/portraits/lego/1.jpg');
+    }
+  }, []);
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
@@ -146,7 +158,11 @@ export default function AIPage() {
             </div>
 
             {msg.sender === "user" && (
-              <img src={userAvatar} alt="" className="w-10 h-10 rounded-full object-cover flex-shrink-0 shadow-sm order-3" />
+              <img 
+                src={userAvatar || 'https://randomuser.me/api/portraits/lego/1.jpg'} 
+                alt="User" 
+                className="w-10 h-10 rounded-full object-cover flex-shrink-0 shadow-sm order-3" 
+              />
             )}
           </div>
         ))}

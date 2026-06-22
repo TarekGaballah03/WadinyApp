@@ -5,7 +5,7 @@ import { useGoogleLogin } from '@react-oauth/google';
 import toast from 'react-hot-toast';
 import { useTheme } from "../../context/ThemeContext";
 import { signupAPI, googleSignupAPI } from "../../services/api";
-import { FiUser, FiMail, FiPhone, FiLock, FiCheckCircle, FiXCircle } from "react-icons/fi";
+import { FiUser, FiMail, FiPhone, FiLock, FiCheckCircle, FiXCircle, FiBriefcase, FiUserCheck } from "react-icons/fi";
 
 function Signup() {
   const navigate = useNavigate();
@@ -17,6 +17,7 @@ function Signup() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [gender, setGender] = useState("male");
+  const [role, setRole] = useState("user"); // ⭐ جديد: اختيار الدور
   const [attachment, setAttachment] = useState(null);
   
   const [errors, setErrors] = useState({});
@@ -67,94 +68,112 @@ function Signup() {
       : 'bg-[#F3F9FF] border-transparent focus:border-[#2B86ED] text-[#0C355E]'}`;
   };
 
- const handleSignup = async () => {
-  setTouched({ name: true, email: true, phone: true, password: true, confirmPassword: true });
-  if (Object.keys(errors).length > 0 || !name || !email || !password) {
-    toast.error("Please fix all errors before submitting");
-    return;
-  }
-  setLoading(true);
-  setGeneralError("");
-  
-  toast.loading("Creating your account...", { id: "signup" });
-  
-  try {
-    const result = await signupAPI({ name, email, password, confirmPassword, phone, gender, attachment });
-    if (result.msg) {
-      toast.success("Account created successfully! Please verify your email", { id: "signup", duration: 4000 });
-      // ⭐ روح لصفحة تأكيد الإيميل من غير setTimeout
-      navigate("/confirm-email", { state: { email: email } });
-    } else {
-      toast.error(result.message || "Signup failed", { id: "signup" });
-    }
-  } catch (err) {
-    toast.error(err.message || "Signup failed. Please try again", { id: "signup" });
-  } finally {
-    setLoading(false);
-  }
-};
-  // Google Signup
-  // Google Signup
-const googleSignup = useGoogleLogin({
-  onSuccess: async (tokenResponse) => {
-    console.log("🟡 Google signup token response:", tokenResponse);
-    
-    if (!tokenResponse.code) {
-      toast.error("Failed to get authorization code from Google");
-      setLoading(false);
+  const handleSignup = async () => {
+    setTouched({ name: true, email: true, phone: true, password: true, confirmPassword: true });
+    if (Object.keys(errors).length > 0 || !name || !email || !password) {
+      toast.error("Please fix all errors before submitting");
       return;
     }
-
     setLoading(true);
     setGeneralError("");
-    toast.loading("Connecting to Google...", { id: "google-signup" });
+    
+    toast.loading("Creating your account...", { id: "signup" });
     
     try {
-      const result = await googleSignupAPI(tokenResponse.code);
-      console.log("🟢 Google signup result:", result);
+      // ⭐ إرسال الدور مع بيانات التسجيل
+      const result = await signupAPI({ 
+        name, 
+        email, 
+        password, 
+        confirmPassword, 
+        phone, 
+        gender, 
+        attachment,
+        role: role // ⭐ الدور المختار
+      });
       
-      if (result.access_token) {
-        localStorage.setItem("access_token", result.access_token);
-        localStorage.setItem("refresh_token", result.refresh_token);
-        localStorage.setItem("token_prefix", result.prefix);
-        localStorage.setItem("userRole", result.role || "user");
-        localStorage.setItem("loggedIn", "true");
+      if (result.msg) {
+        const roleMessage = role === 'restaurant' 
+          ? 'Your restaurant account request has been submitted for review!' 
+          : 'Please verify your email';
         
-        toast.success("Google account created successfully! 🚀", { 
-          id: "google-signup",
-          duration: 3000,
+        toast.success(`Account created successfully! ${roleMessage}`, { 
+          id: "signup", 
+          duration: 4000 
         });
         
-        setTimeout(() => {
-          window.location.href = "/home";
-        }, 1000);
+        navigate("/confirm-email", { state: { email: email } });
       } else {
-        toast.error(result.msg || result.message || "Google signup failed", { id: "google-signup" });
-        setLoading(false);
+        toast.error(result.message || "Signup failed", { id: "signup" });
       }
     } catch (err) {
-      console.error("🔥 Google signup error:", err);
-      
-      if (err.message?.includes("already registered") || 
-          err.message?.includes("Email already") ||
-          err.data?.msg?.includes("already registered")) {
-        toast.error("Email already registered. Please login instead", { id: "google-signup" });
-        setTimeout(() => {
-          navigate("/login");
-        }, 1500);
-      } else {
-        toast.error(err.message || "Google signup failed", { id: "google-signup" });
-      }
+      toast.error(err.message || "Signup failed. Please try again", { id: "signup" });
+    } finally {
       setLoading(false);
     }
-  },
-  onError: (error) => {
-    console.error("🔴 Google OAuth error:", error);
-    toast.error("Google signup cancelled or failed", { id: "google-signup" });
-    setLoading(false);
-  },
-  flow: 'auth-code',
-});
+  };
+
+  // Google Signup
+  const googleSignup = useGoogleLogin({
+    onSuccess: async (tokenResponse) => {
+      console.log("🟡 Google signup token response:", tokenResponse);
+      
+      if (!tokenResponse.code) {
+        toast.error("Failed to get authorization code from Google");
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+      setGeneralError("");
+      toast.loading("Connecting to Google...", { id: "google-signup" });
+      
+      try {
+        const result = await googleSignupAPI(tokenResponse.code);
+        console.log("🟢 Google signup result:", result);
+        
+        if (result.access_token) {
+          localStorage.setItem("access_token", result.access_token);
+          localStorage.setItem("refresh_token", result.refresh_token);
+          localStorage.setItem("token_prefix", result.prefix);
+          localStorage.setItem("userRole", result.role || "user");
+          localStorage.setItem("loggedIn", "true");
+          
+          toast.success("Google account created successfully! 🚀", { 
+            id: "google-signup",
+            duration: 3000,
+          });
+          
+          setTimeout(() => {
+            window.location.href = "/home";
+          }, 1000);
+        } else {
+          toast.error(result.msg || result.message || "Google signup failed", { id: "google-signup" });
+          setLoading(false);
+        }
+      } catch (err) {
+        console.error("🔥 Google signup error:", err);
+        
+        if (err.message?.includes("already registered") || 
+            err.message?.includes("Email already") ||
+            err.data?.msg?.includes("already registered")) {
+          toast.error("Email already registered. Please login instead", { id: "google-signup" });
+          setTimeout(() => {
+            navigate("/login");
+          }, 1500);
+        } else {
+          toast.error(err.message || "Google signup failed", { id: "google-signup" });
+        }
+        setLoading(false);
+      }
+    },
+    onError: (error) => {
+      console.error("🔴 Google OAuth error:", error);
+      toast.error("Google signup cancelled or failed", { id: "google-signup" });
+      setLoading(false);
+    },
+    flow: 'auth-code',
+  });
 
   return (
     <div className={`min-h-screen py-10 px-5 flex flex-col transition-colors duration-300 ${isDarkMode ? 'bg-[#0a0f1a]' : 'bg-white'}`}>
@@ -201,6 +220,53 @@ const googleSignup = useGoogleLogin({
               </div>
             </div>
           ))}
+
+          {/* ⭐⭐⭐ حقل اختيار الدور (جديد) ⭐⭐⭐ */}
+          <div className="pt-1">
+            <label className={`text-sm mb-1 block ml-1 ${isDarkMode ? 'text-white/80' : 'text-[#0C355E]'}`}>
+              Account Type
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setRole("user")}
+                className={`h-12 rounded-[13px] border-2 flex items-center justify-center gap-2 transition-all duration-300 ${
+                  role === "user"
+                    ? isDarkMode 
+                      ? 'border-[#2B86ED] bg-[#2B86ED]/10 text-[#2B86ED]' 
+                      : 'border-[#2B86ED] bg-[#2B86ED]/10 text-[#2B86ED]'
+                    : isDarkMode 
+                      ? 'border-white/20 text-white/60 hover:border-white/40' 
+                      : 'border-slate-200 text-slate-500 hover:border-slate-300'
+                }`}
+              >
+                <FiUserCheck size={18} />
+                <span className="text-sm font-medium">User</span>
+              </button>
+              
+              <button
+                type="button"
+                onClick={() => setRole("restaurant")}
+                className={`h-12 rounded-[13px] border-2 flex items-center justify-center gap-2 transition-all duration-300 ${
+                  role === "restaurant"
+                    ? isDarkMode 
+                      ? 'border-[#34D399] bg-[#34D399]/10 text-[#34D399]' 
+                      : 'border-[#34D399] bg-[#34D399]/10 text-[#34D399]'
+                    : isDarkMode 
+                      ? 'border-white/20 text-white/60 hover:border-white/40' 
+                      : 'border-slate-200 text-slate-500 hover:border-slate-300'
+                }`}
+              >
+                <FiBriefcase size={18} />
+                <span className="text-sm font-medium">Business</span>
+              </button>
+            </div>
+            {role === "restaurant" && (
+              <p className={`text-xs mt-2 ml-1 ${isDarkMode ? 'text-emerald-400/70' : 'text-emerald-600'}`}>
+                Restaurant owner accounts get access to manage offers and restaurant profile
+              </p>
+            )}
+          </div>
 
           <div className="grid grid-cols-2 gap-3 pt-1">
             <div>

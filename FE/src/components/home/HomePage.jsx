@@ -1,3 +1,4 @@
+// src/components/home/HomePage.jsx
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import mapImage from "../../assets/map.jpg";
@@ -16,11 +17,15 @@ import {
 export default function HomePage() {
   const navigate = useNavigate();
   const { isDarkMode } = useTheme();
-  const { getTopRatedPlaces } = usePlaces();
+  const { getTopRatedPlaces, places } = usePlaces();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [feedItems, setFeedItems] = useState([]);
   const [loadingFeed, setLoadingFeed] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [showResults, setShowResults] = useState(false);
 
   useEffect(() => {
     setIsLoggedIn(localStorage.getItem("loggedIn") === "true");
@@ -81,6 +86,154 @@ export default function HomePage() {
     }
   };
 
+  // ============= السيرش الديناميكي =============
+  const handleSearch = async (e) => {
+    e.preventDefault();
+    if (!searchQuery.trim()) {
+      setShowResults(false);
+      setSearchResults([]);
+      return;
+    }
+
+    setIsSearching(true);
+    setShowResults(true);
+
+    try {
+      const query = searchQuery.toLowerCase().trim();
+      const results = [];
+
+      // 1️⃣ البحث في الأماكن (Places)
+      const filteredPlaces = places.filter(place => 
+        place.name.toLowerCase().includes(query) ||
+        place.location?.toLowerCase().includes(query) ||
+        place.category?.toLowerCase().includes(query) ||
+        place.tags?.some(tag => tag.toLowerCase().includes(query))
+      );
+
+      filteredPlaces.forEach(place => {
+        results.push({
+          id: place.id,
+          title: place.name,
+          subtitle: `📍 ${place.location}`,
+          type: 'place',
+          icon: '🏪',
+          data: place,
+          action: () => handleProtectedNavigation(`/place/${place.id}`)
+        });
+      });
+
+      // 2️⃣ البحث في الـ Feed (Posts, Reports, Offers)
+      const feedResults = feedItems.filter(item =>
+        item.title?.toLowerCase().includes(query) ||
+        item.description?.toLowerCase().includes(query)
+      );
+
+      feedResults.forEach(item => {
+        let type = item.type || 'post';
+        let icon = '📝';
+        let path = '/details';
+        let state = { type: item.type, data: item.data || item };
+
+        if (item.type === 'hazard') {
+          icon = '⚠️';
+        } else if (item.type === 'offer') {
+          icon = '🎁';
+          path = '/details';
+          state = { type: 'offer', data: item.data || item };
+        } else if (item.type === 'social' || item.postId) {
+          icon = '💬';
+          path = '/social';
+          state = { scrollToPostId: item.postId || item.id };
+        }
+
+        const exists = results.some(r => r.id === item.id && r.type === type);
+        if (!exists) {
+          results.push({
+            id: item.id,
+            title: item.title,
+            subtitle: item.description?.substring(0, 60) + (item.description?.length > 60 ? '...' : ''),
+            type: type,
+            icon: icon,
+            data: item,
+            action: () => handleFeedAction(item)
+          });
+        }
+      });
+
+      // 3️⃣ البحث في التقارير (Reports) - إضافي
+      try {
+        const reportsRes = await getReportsAPI({ limit: 20 }).catch(() => ({ reports: [] }));
+        const reports = reportsRes.reports || [];
+        const filteredReports = reports.filter(r =>
+          r.issueType?.toLowerCase().includes(query) ||
+          r.note?.toLowerCase().includes(query) ||
+          r.location?.toLowerCase().includes(query)
+        );
+
+        filteredReports.forEach(report => {
+          const exists = results.some(r => r.id === report._id && r.type === 'report');
+          if (!exists) {
+            results.push({
+              id: report._id,
+              title: `⚠️ ${report.issueType || 'Report'}`,
+              subtitle: report.note?.substring(0, 60) || report.location || 'No details',
+              type: 'report',
+              icon: '⚠️',
+              data: report,
+              action: () => handleProtectedNavigation('/details', { type: 'hazard', data: report })
+            });
+          }
+        });
+      } catch (error) {
+        console.error('Error fetching reports for search:', error);
+      }
+
+      // 4️⃣ البحث في العروض (Offers) - إضافي
+      try {
+        const offersRes = await getOffersAPI({ isActive: true, limit: 20 }).catch(() => ({ offers: [] }));
+        const offers = offersRes.offers || [];
+        const filteredOffers = offers.filter(o =>
+          o.title?.toLowerCase().includes(query) ||
+          o.description?.toLowerCase().includes(query)
+        );
+
+        filteredOffers.forEach(offer => {
+          const exists = results.some(r => r.id === offer._id && r.type === 'offer');
+          if (!exists) {
+            results.push({
+              id: offer._id,
+              title: `🎁 ${offer.title}`,
+              subtitle: offer.description?.substring(0, 60) || offer.discount || 'Special offer',
+              type: 'offer',
+              icon: '🎁',
+              data: offer,
+              action: () => handleProtectedNavigation('/details', { type: 'offer', data: offer })
+            });
+          }
+        });
+      } catch (error) {
+        console.error('Error fetching offers for search:', error);
+      }
+
+      setSearchResults(results);
+
+    } catch (error) {
+      console.error('Search error:', error);
+      setSearchResults([]);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  // إغلاق نتائج البحث عند الضغط خارجها
+  useEffect(() => {
+    const handleClickOutside = () => {
+      setShowResults(false);
+    };
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, []);
+
   const topRatedPlaces = getTopRatedPlaces(3);
 
   return (
@@ -117,16 +270,107 @@ export default function HomePage() {
           Real-time updates from your community
         </p>
 
-        <div className="mt-5 md:mt-8">
-          <input
-            type="text"
-            placeholder="Search for a location, category, or ..."
-            className={`w-[90%] p-3 rounded-[30px] border transition-all duration-300 shadow-[0_4px_15px_rgba(0,0,0,0.08)] focus:outline-none focus:ring-2 md:max-w-md md:p-4 md:text-lg ${
-              isDarkMode
-                ? "bg-white/10 backdrop-blur-md border-white/20 text-white placeholder:text-white/50 focus:ring-white/30"
-                : "bg-white border-none text-[#1a3650] placeholder:text-[#a0aec0] focus:ring-[#4299e1]/30"
-            }`}
-          />
+        {/* ⭐ Search Bar - ديناميكي مع أيقونة مضبوطة */}
+        <div className="mt-5 md:mt-8 relative max-w-md mx-auto w-[90%]">
+          <form onSubmit={handleSearch} className="relative">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                if (!e.target.value.trim()) {
+                  setShowResults(false);
+                  setSearchResults([]);
+                }
+              }}
+              onFocus={() => {
+                if (searchQuery.trim() && searchResults.length > 0) {
+                  setShowResults(true);
+                }
+              }}
+              placeholder="Search for a place, offer, category..."
+              className={`w-full p-3 rounded-[30px] border transition-all duration-300 shadow-[0_4px_15px_rgba(0,0,0,0.08)] focus:outline-none focus:ring-2 md:p-4 md:text-lg ${
+                isDarkMode
+                  ? "bg-white/10 backdrop-blur-md border-white/20 text-white placeholder:text-white/50 focus:ring-white/30"
+                  : "bg-white border-none text-[#1a3650] placeholder:text-[#a0aec0] focus:ring-[#4299e1]/30"
+              }`}
+            />
+            {/* ⭐ أيقونة البحث - مضبوطة داخل الـ input */}
+            <button
+              type="submit"
+              className={`absolute right-4 top-1/2 -translate-y-1/2 transition-colors ${
+                isDarkMode ? "text-white/50 hover:text-white/80" : "text-gray-400 hover:text-gray-600"
+              }`}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+            </button>
+          </form>
+
+          {/* ⭐ نتائج البحث */}
+          {showResults && searchQuery.trim() && (
+            <div
+              className={`absolute left-0 right-0 mt-2 rounded-2xl shadow-2xl overflow-hidden z-50 max-h-[400px] overflow-y-auto ${
+                isDarkMode
+                  ? "bg-[#1a2b3c]/95 backdrop-blur-xl border border-white/10"
+                  : "bg-white/95 backdrop-blur-xl border border-gray-200"
+              }`}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {isSearching ? (
+                <div className="p-6 text-center">
+                  <div className="w-6 h-6 border-2 border-t-transparent rounded-full animate-spin mx-auto border-[#2B86ED]"></div>
+                  <p className={`text-sm mt-2 ${isDarkMode ? "text-white/60" : "text-gray-500"}`}>
+                    Searching...
+                  </p>
+                </div>
+              ) : searchResults.length === 0 ? (
+                <div className="p-6 text-center">
+                  <p className={`text-sm ${isDarkMode ? "text-white/60" : "text-gray-500"}`}>
+                    No results found for "{searchQuery}"
+                  </p>
+                </div>
+              ) : (
+                <div>
+                  {searchResults.map((result, index) => (
+                    <div
+                      key={`${result.id}-${index}`}
+                      onClick={() => {
+                        result.action();
+                        setShowResults(false);
+                        setSearchQuery("");
+                        setSearchResults([]);
+                      }}
+                      className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-all duration-200 border-b last:border-none ${
+                        isDarkMode
+                          ? "hover:bg-white/10 border-white/5"
+                          : "hover:bg-gray-50 border-gray-100"
+                      }`}
+                    >
+                      <span className="text-2xl">{result.icon}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className={`text-sm font-medium truncate ${isDarkMode ? "text-white" : "text-gray-900"}`}>
+                          {result.title}
+                        </p>
+                        <p className={`text-xs truncate ${isDarkMode ? "text-white/50" : "text-gray-500"}`}>
+                          {result.subtitle}
+                        </p>
+                      </div>
+                      <span className={`text-xs px-2 py-1 rounded-full ${
+                        isDarkMode
+                          ? "bg-white/10 text-white/60"
+                          : "bg-gray-100 text-gray-500"
+                      }`}>
+                        {result.type}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <button

@@ -401,12 +401,20 @@ export default function PlaceDetailsPage() {
             </div>
 
             <div className="space-y-3">
-              <button
-                onClick={() => navigate('/map', { state: { location: place.location } })}
-                className="w-full py-3.5 rounded-full font-semibold text-base bg-[#3182ce] text-white hover:bg-[#2c5282] transition-all hover:scale-[1.02] active:scale-95"
-              >
-                View on Map
-              </button>
+                {console.log("PLACE:", place)}
+  {console.log("LOCATION:", place?.location)}
+ { console.log("ADDRESS:", place.address)}
+{console.log("COORDINATES:", place.address?.coordinates)}
+             <button
+  onClick={() =>
+    navigate(
+      `/map?lat=${place.address.coordinates.lat}&lng=${place.address.coordinates.lng}&zoom=16&highlight=${place.id}`
+    )
+  }
+  className="w-full py-3.5 rounded-full font-semibold text-base bg-[#3182ce] text-white hover:bg-[#2c5282] transition-all hover:scale-[1.02] active:scale-95"
+>
+  View on Map
+</button>
               
               <button
                 onClick={() => navigate('/book-table', { state: { restaurant: place.name } })}

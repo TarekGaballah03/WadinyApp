@@ -1,3 +1,4 @@
+// src/components/recommendationandoffers/RecommendationsAndOffers.jsx
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Sidebar from '../sidebar/Sidebar'
@@ -272,7 +273,8 @@ export default function RecommendationsAndOffers() {
       description: post.body,
       author: post.author,
       originalPost: post,
-      isFromAPI: false
+      isFromAPI: false,
+      restaurantId: null // ⭐ إضافة restaurantId فارغ
     }))
 
   // تحويل العروض من الـ API لصيغة الـ RestaurantCard
@@ -287,10 +289,10 @@ export default function RecommendationsAndOffers() {
     offerText: offer.discount,
     imageUrl: offer.image?.secure_url || "https://images.unsplash.com/photo-1554118811-1e0d58224f24?w=400&h=200&fit=crop",
     description: offer.description,
-    restaurantName: offer.restaurantId?.name,
+    restaurantName: offer.restaurantId?.name || "Restaurant",
     code: offer.code,
     validUntil: offer.validUntil,
-    restaurantId: offer.restaurantId?._id,
+    restaurantId: offer.restaurantId?._id || offer.restaurantId, // ⭐ تأكدي من الـ ID
     isFromAPI: true
   }))
 
@@ -299,6 +301,10 @@ export default function RecommendationsAndOffers() {
 
   // دالة للتعامل مع الضغط على عرض
   const handleOfferClick = (offer) => {
+    console.log('🔄 handleOfferClick - offer:', offer);
+    console.log('🔄 restaurantId:', offer.restaurantId);
+    console.log('🔄 isFromAPI:', offer.isFromAPI);
+    
     if (offer.isFromAPI) {
       // عرض من الـ API (من صاحب مطعم)
       handleProtectedNavigation('/details', {
@@ -313,7 +319,7 @@ export default function RecommendationsAndOffers() {
           validUntil: offer.validUntil ? new Date(offer.validUntil).toLocaleDateString() : 'Limited time',
           code: offer.code,
           isRestaurantOffer: true,
-          restaurantId: offer.restaurantId
+          restaurantId: offer.restaurantId // ⭐ هذا مهم عشان نجيب الإحداثيات
         }
       })
     } else if (offer.originalPost) {

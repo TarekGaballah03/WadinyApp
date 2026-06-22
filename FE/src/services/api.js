@@ -18,7 +18,7 @@ export const getHeaders = () => {
 export const handleResponse = async (response) => {
   const data = await response.json();
   if (!response.ok) {
-    const errorMessage = data.msg || data.message || 'Something went wrong';
+    const errorMessage = data.msg || data.message || data.error || 'Something went wrong';
     const error = new Error(errorMessage);
     error.data = data;
     throw error;
@@ -35,6 +35,8 @@ export const signupAPI = async (userData) => {
   formData.append('cPassword', userData.confirmPassword);
   formData.append('phone', userData.phone);
   formData.append('gender', userData.gender || 'male');
+  formData.append('role', userData.role || 'user');
+  
   if (userData.attachment) {
     formData.append('attachment', userData.attachment);
   }
@@ -521,9 +523,14 @@ export const createPostAPI = async (postData) => {
   if (postData.restaurantId) formData.append('restaurantId', postData.restaurantId);
   if (postData.attachment) formData.append('attachment', postData.attachment);
 
+  const token = localStorage.getItem('access_token');
+  const prefix = localStorage.getItem('token_prefix');
+
   const response = await fetch(`${API_BASE_URL}/posts/create`, {
     method: 'POST',
-    headers: { 'Authorization': getHeaders().Authorization },
+    headers: {
+      'Authorization': token && prefix ? `${prefix} ${token}` : '',
+    },
     body: formData,
   });
   return handleResponse(response);
@@ -589,13 +596,27 @@ export const submitReportAPI = async (reportData) => {
   formData.append('issueType', reportData.issueType);
   if (reportData.note) formData.append('note', reportData.note);
   if (reportData.location) formData.append('location', reportData.location);
-  if (reportData.coordinates) formData.append('coordinates', JSON.stringify(reportData.coordinates));
-  if (reportData.sharedToFeed !== undefined) formData.append('sharedToFeed', reportData.sharedToFeed);
+  
+  if (reportData.lat !== undefined && reportData.lat !== null) {
+    formData.append('lat', String(reportData.lat));
+  }
+  if (reportData.lng !== undefined && reportData.lng !== null) {
+    formData.append('lng', String(reportData.lng));
+  }
+  
+  if (reportData.sharedToFeed !== undefined) {
+    formData.append('sharedToFeed', reportData.sharedToFeed ? 'true' : 'false');
+  }
   if (reportData.media) formData.append('media', reportData.media);
+
+  const token = localStorage.getItem('access_token');
+  const prefix = localStorage.getItem('token_prefix');
 
   const response = await fetch(`${API_BASE_URL}/reports/submit`, {
     method: 'POST',
-    headers: { 'Authorization': getHeaders().Authorization },
+    headers: {
+      'Authorization': token && prefix ? `${prefix} ${token}` : '',
+    },
     body: formData,
   });
   return handleResponse(response);
@@ -609,6 +630,35 @@ export const getReportsAPI = async (filters = {}) => {
   params.append('limit', limit);
 
   const response = await fetch(`${API_BASE_URL}/reports?${params.toString()}`);
+  return handleResponse(response);
+};
+
+// ⭐⭐⭐ Resolve Report API ⭐⭐⭐
+export const resolveReportAPI = async (reportId) => {
+  const token = localStorage.getItem('access_token');
+  const prefix = localStorage.getItem('token_prefix');
+
+  const response = await fetch(`${API_BASE_URL}/reports/${reportId}/resolve`, {
+    method: 'PATCH',
+    headers: {
+      'Authorization': token && prefix ? `${prefix} ${token}` : '',
+      'Content-Type': 'application/json',
+    },
+  });
+  return handleResponse(response);
+};
+
+// ⭐⭐⭐ Delete Report API ⭐⭐⭐
+export const deleteReportAPI = async (reportId) => {
+  const token = localStorage.getItem('access_token');
+  const prefix = localStorage.getItem('token_prefix');
+
+  const response = await fetch(`${API_BASE_URL}/reports/${reportId}`, {
+    method: 'DELETE',
+    headers: {
+      'Authorization': token && prefix ? `${prefix} ${token}` : '',
+    },
+  });
   return handleResponse(response);
 };
 
