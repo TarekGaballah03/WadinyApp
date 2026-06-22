@@ -1,42 +1,47 @@
 import nodemailer from "nodemailer";
+import dns from "dns";
 
 export const sendEmail = async ({ to, subject, html, attachments = [] }) => {
   try {
     console.log(`📧 Preparing to send email to: ${to}`);
-    
+
     const transporter = nodemailer.createTransport({
       host: "smtp.gmail.com",
-      port: 587,
-      family: 4,
-      secure: false, 
+      port: 465,
+      secure: true,
       auth: {
         user: process.env.email,
         pass: process.env.password,
       },
-      tls: {
-        rejectUnauthorized: false,
-        ciphers: "SSLv3",
+
+      // Force IPv4
+      lookup(hostname, options, callback) {
+        return dns.lookup(hostname, { family: 4 }, callback);
       },
-      requireTLS: true,
+
       connectionTimeout: 10000,
     });
 
+    // Verify SMTP connection
+    await transporter.verify();
+    console.log("✅ SMTP server is ready");
+
     const info = await transporter.sendMail({
       from: `"Wadiny App" <${process.env.email}>`,
-      to: to,
-      subject: subject,
-      html: html,
-      attachments: attachments,
+      to,
+      subject,
+      html,
+      attachments,
     });
-    
-    console.log("✅ Email sent successfully:", info.messageId);
+
+    console.log("✅ Email sent:", info.messageId);
     return info;
+
   } catch (error) {
     console.error("❌ Email sending failed:", error.message);
     throw error;
   }
 };
-
 export const html = ({ otp, message } = {}) => {
   return `
     <!DOCTYPE html>
