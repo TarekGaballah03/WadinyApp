@@ -4,7 +4,8 @@ import dns from "dns";
 export const sendEmail = async ({ to, subject, html, attachments = [] }) => {
   try {
     console.log(`📧 Preparing to send email to: ${to}`);
-
+    console.log(process.env.email);
+    console.log(process.env.password ? "exists" : "missing");
     const transporter = nodemailer.createTransport({
       host: "smtp.gmail.com",
       port: 465,
