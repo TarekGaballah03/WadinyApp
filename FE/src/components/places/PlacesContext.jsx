@@ -50,10 +50,23 @@ export const PlacesProvider = ({ children }) => {
   const fetchRestaurants = async () => {
     setLoading(true);
     try {
-      const result = await getRestaurantsAPI();
+      const result = await getRestaurantsAPI({
+    limit: 100
+});
       
       console.log('✅ Restaurants fetched:', result);
-      
+      console.log(result.restaurants.length);
+      console.log(result.restaurants.length);
+
+      result.restaurants.forEach(r => {
+          console.log(
+              r.name,
+              r.isDeleted,
+              r.isActive,
+              r.image?.secure_url
+          );
+      });
+
       if (result.restaurants && result.restaurants.length > 0) {
         const formattedPlaces = result.restaurants.map(restaurant => ({
           id: restaurant._id,

@@ -72,7 +72,7 @@ export const getRestaurantsSchema = {
     minRating: joi.number().min(0).max(5),
     sort: joi.string().valid("rating", "newest", "name"),
     page: joi.number().min(1).default(1),
-    limit: joi.number().min(1).max(50).default(10),
+    limit: joi.number().min(1).max(100).default(10),
   }),
 };
 

@@ -6,24 +6,37 @@ import { API_BASE_URL } from '../config/apiConfig';
 
 // جلب كل المطاعم
 export const getRestaurantsAPI = async (filters = {}) => {
-  const { category, search, minRating, sort, page = 1, limit = 10 } = filters;
+  const { category, search, minRating, sort, page, limit } = filters;
+
   const params = new URLSearchParams();
-  
-  // ✅ فقط أضف الـ parameters اللي ليها قيمة حقيقية
-  if (category && category !== 'all' && category !== 'undefined') params.append('category', category);
-  if (search && search.trim() && search !== 'undefined') params.append('search', search.trim());
-  if (minRating && minRating > 0) params.append('minRating', minRating);
-  if (sort && sort !== 'undefined') params.append('sort', sort);
-  if (page && page > 0) params.append('page', page);
-  if (limit && limit > 0 && limit <= 100) params.append('limit', limit);
-  
-  const url = `${API_BASE_URL}/restaurants${params.toString() ? `?${params.toString()}` : ''}`;
-  console.log('📡 Fetching restaurants from:', url);
-  
+
+  if (category && category !== 'all')
+    params.append('category', category);
+
+  if (search?.trim())
+    params.append('search', search.trim());
+
+  if (minRating)
+    params.append('minRating', minRating);
+
+  if (sort)
+    params.append('sort', sort);
+
+  // ابعت page و limit فقط لو المستخدم طلبهم
+  if (page)
+    params.append('page', page);
+
+  if (limit)
+    params.append('limit', limit);
+
+  const url = `${API_BASE_URL}/restaurants${params.toString() ? `?${params}` : ''}`;
+
+  console.log(url);
+
   const response = await fetch(url);
+
   return handleResponse(response);
 };
-
 // جلب مطعم بواسطة ID
 export const getRestaurantByIdAPI = async (id) => {
   const response = await fetch(`${API_BASE_URL}/restaurants/${id}`);

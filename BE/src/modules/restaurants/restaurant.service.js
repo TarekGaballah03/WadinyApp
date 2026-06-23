@@ -55,7 +55,7 @@ export const updateRestaurant = asyncHandler(async (req, res, next) => {
   const { id } = req.params;
   const updateData = { ...req.body };
 
-  const restaurant = await restaurantModel.findOne({ _id: id, isDeleted: false });
+  const restaurant = await restaurantModel.findOne({ _id: id, isDeleted: { $ne: true } });
   if (!restaurant) {
     return next(new Error("Restaurant not found", { cause: 404 }));
   }
@@ -98,7 +98,7 @@ export const updateRestaurant = asyncHandler(async (req, res, next) => {
 export const deleteRestaurant = asyncHandler(async (req, res, next) => {
   const { id } = req.params;
 
-  const restaurant = await restaurantModel.findOne({ _id: id, isDeleted: false });
+  const restaurant = await restaurantModel.findOne({ _id: id, isDeleted: { $ne: true } });
   if (!restaurant) {
     return next(new Error("Restaurant not found", { cause: 404 }));
   }
@@ -113,52 +113,122 @@ export const deleteRestaurant = asyncHandler(async (req, res, next) => {
 
 // 4. Get All Restaurants (with filters)
 export const getRestaurants = asyncHandler(async (req, res, next) => {
-  const { category, search, minRating, sort, page, limit } = req.query;
+
+  const {
+  category,
+  search,
+  minRating,
+  sort,
+  page = 1,
+  limit = 100
+  } = req.query;
   
-  let filter = { isDeleted: false };
-  if (category) filter.category = category;
-  if (minRating) filter.avgRating = { $gte: parseFloat(minRating) };
-  if (search) {
-    filter.$or = [
-      { name: { $regex: search, $options: "i" } },
-      { location: { $regex: search, $options: "i" } },
-      { tags: { $in: [new RegExp(search, "i")] } },
-    ];
+  
+  
+  let filter = {
+  isDeleted: { $ne: true }
+  };
+  
+  
+  
+  if(category)
+  filter.category = category;
+  
+  
+  
+  if(minRating)
+  filter.avgRating = {
+  $gte:Number(minRating)
+  };
+  
+  
+  
+  if(search){
+  
+  filter.$or = [
+  
+  {
+  name:{
+  $regex:search,
+  $options:"i"
   }
-
+  },
+  
+  {
+  location:{
+  $regex:search,
+  $options:"i"
+  }
+  },
+  
+  {
+  tags:{
+  $in:[new RegExp(search,"i")]
+  }
+  }
+  
+  ];
+  
+  }
+  
+  
+  
   let sortOption = {};
-  if (sort === "rating") sortOption.avgRating = -1;
-  else if (sort === "newest") sortOption.createdAt = -1;
-  else if (sort === "name") sortOption.name = 1;
-
-  const skip = (parseInt(page) - 1) * parseInt(limit);
+  
+  if(sort==="rating")
+  sortOption.avgRating=-1;
+  
+  else if(sort==="newest")
+  sortOption.createdAt=-1;
+  
+  else if(sort==="name")
+  sortOption.name=1;
+  
+  
+  
+  const pageNum = Number(page) || 1;
+  const limitNum = Number(limit) || 100;
+  
+  const skip = (pageNum-1)*limitNum;
+  
+  
+  
   const restaurants = await restaurantModel
-    .find(filter)
-    .sort(sortOption)
-    .skip(skip)
-    .limit(parseInt(limit))
-    .populate("ownerId", "name email");
-
+  .find(filter)
+  .sort(sortOption)
+  .skip(skip)
+  .limit(limitNum)
+  .populate("ownerId","name email");
+  
+  
+  
   const total = await restaurantModel.countDocuments(filter);
-
+  
+  
+  
   return res.status(200).json({
-    msg: "done",
-    restaurants,
-    pagination: {
-      total,
-      page: parseInt(page),
-      limit: parseInt(limit),
-      pages: Math.ceil(total / parseInt(limit)),
-    },
+  
+  msg:"done",
+  
+  restaurants,
+  
+  pagination:{
+  total,
+  page:pageNum,
+  limit:limitNum,
+  pages:Math.ceil(total/limitNum)
+  }
+  
   });
-});
+  
+  });
 
 // 5. Get Single Restaurant
 export const getRestaurantById = asyncHandler(async (req, res, next) => {
   const { id } = req.params;
 
   const restaurant = await restaurantModel
-    .findOne({ _id: id, isDeleted: false })
+    .findOne({ _id: id, isDeleted: { $ne: true } })
     .populate("ownerId", "name email");
 
   if (!restaurant) {
@@ -184,7 +254,7 @@ export const getRestaurantById = asyncHandler(async (req, res, next) => {
 export const getMyRestaurant = asyncHandler(async (req, res, next) => {
   const restaurants = await restaurantModel.find({
     ownerId: req.user._id,
-    isDeleted: false,
+    isDeleted: { $ne: true },
   }).sort({ createdAt: -1 });
 
   return res.status(200).json({ msg: "done", restaurants });
@@ -201,7 +271,7 @@ export const addOffer = asyncHandler(async (req, res, next) => {
     return next(new Error("You must be a restaurant owner or admin to add offers", { cause: 403 }));
   }
 
-  const restaurant = await restaurantModel.findOne({ _id: restaurantId, isDeleted: false });
+  const restaurant = await restaurantModel.findOne({ _id: restaurantId, isDeleted: { $ne: true } });
   if (!restaurant) {
     return next(new Error("Restaurant not found", { cause: 404 }));
   }
@@ -371,7 +441,7 @@ export const getMyRestaurantOffers = asyncHandler(async (req, res, next) => {
 
   const ownedRestaurants = await restaurantModel.find({
     ownerId: req.user._id,
-    isDeleted: false,
+    isDeleted: { $ne: true },
   });
 
   if (ownedRestaurants.length === 0) {
