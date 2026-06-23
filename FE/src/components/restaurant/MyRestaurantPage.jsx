@@ -19,6 +19,8 @@ export default function MyRestaurantPage() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
+  const [isCreatingNew, setIsCreatingNew] = useState(false);
+  const [restaurants, setRestaurants] = useState([]);
   const [restaurant, setRestaurant] = useState(null);
   const [isMapModalOpen, setIsMapModalOpen] = useState(false);
   const [formErrors, setFormErrors] = useState({});
@@ -40,6 +42,57 @@ export default function MyRestaurantPage() {
 
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
 
+  const defaultFormData = () => ({
+    name: '',
+    location: '',
+    address: { street: '', city: 'Alexandria', area: '', coordinates: { lat: null, lng: null } },
+    category: 'restaurant',
+    cuisine: [],
+    hours: { open: '9:00 AM', close: '11:00 PM' },
+    phone: '',
+    priceRange: '$$',
+    tags: []
+  });
+
+  const populateFormFromRestaurant = (data) => {
+    setFormData({
+      name: data.name || '',
+      location: data.location || '',
+      address: {
+        street: data.address?.street || '',
+        city: data.address?.city || 'Alexandria',
+        area: data.address?.area || '',
+        coordinates: data.address?.coordinates || { lat: null, lng: null }
+      },
+      category: data.category || 'restaurant',
+      cuisine: data.cuisine || [],
+      hours: data.hours || { open: '9:00 AM', close: '11:00 PM' },
+      phone: data.phone || '',
+      priceRange: data.priceRange || '$$',
+      tags: data.tags || []
+    });
+    setImagePreview(data.image?.secure_url || null);
+    setImageFile(null);
+  };
+
+  const startCreateNew = () => {
+    setIsCreatingNew(true);
+    setIsEditing(true);
+    setRestaurant(null);
+    setFormData(defaultFormData());
+    setImagePreview(null);
+    setImageFile(null);
+    setFormErrors({});
+  };
+
+  const selectRestaurant = (selected) => {
+    setIsCreatingNew(false);
+    setIsEditing(false);
+    setRestaurant(selected);
+    populateFormFromRestaurant(selected);
+    setFormErrors({});
+  };
+
   useEffect(() => {
     fetchMyRestaurant();
   }, []);
@@ -49,50 +102,29 @@ export default function MyRestaurantPage() {
 
   try {
     const result = await getMyRestaurantAPI();
+    const list = result.restaurants || (result.restaurant ? [result.restaurant] : []);
 
-    if (result.restaurant) {
-      setRestaurant(result.restaurant);
+    setRestaurants(list);
 
-      setFormData({
-        name: result.restaurant.name || '',
-        location: result.restaurant.location || '',
-        address: {
-          street: result.restaurant.address?.street || '',
-          city: result.restaurant.address?.city || 'Alexandria',
-          area: result.restaurant.address?.area || '',
-          coordinates: result.restaurant.address?.coordinates || { lat: null, lng: null }
-        },
-        category: result.restaurant.category || 'restaurant',
-        cuisine: result.restaurant.cuisine || [],
-        hours: result.restaurant.hours || {
-          open: '9:00 AM',
-          close: '11:00 PM'
-        },
-        phone: result.restaurant.phone || '',
-        priceRange: result.restaurant.priceRange || '$$',
-        tags: result.restaurant.tags || []
-      });
+    if (list.length > 0) {
+      setRestaurant(list[0]);
+      populateFormFromRestaurant(list[0]);
+      setIsCreatingNew(false);
+      setIsEditing(false);
+    } else {
+      setRestaurant(null);
+      setIsCreatingNew(true);
+      setIsEditing(true);
     }
 
   } catch (error) {
 
     console.error(error);
 
-    if (error.message?.includes("don't have a registered restaurant")) {
-
-      setRestaurant(null);
-
-      setIsEditing(true);
-
-    } else {
-
-      Swal.fire({
-        icon: 'error',
-        title: 'Error',
-        text: error.message || 'Failed to load restaurant data',
-      });
-
-    }
+    setRestaurants([]);
+    setRestaurant(null);
+    setIsCreatingNew(true);
+    setIsEditing(true);
 
   } finally {
     setLoading(false);
@@ -285,8 +317,9 @@ export default function MyRestaurantPage() {
       
       console.log("📤 Sending restaurant data:", updateData);
       
+      const isUpdate = !isCreatingNew && restaurant && restaurant._id;
       let savedRestaurant;
-      if (restaurant && restaurant._id) {
+      if (isUpdate) {
         const result = await updateRestaurantAPI(restaurant._id, updateData);
         savedRestaurant = result.restaurant;
       } else {
@@ -295,33 +328,23 @@ export default function MyRestaurantPage() {
       }
       
       if (savedRestaurant) {
-        setRestaurant(savedRestaurant);
-        setFormData({
-          name: savedRestaurant.name || '',
-          location: savedRestaurant.location || '',
-          address: {
-            street: savedRestaurant.address?.street || '',
-            city: savedRestaurant.address?.city || 'Alexandria',
-            area: savedRestaurant.address?.area || '',
-            coordinates: savedRestaurant.address?.coordinates || { lat: null, lng: null }
-          },
-          category: savedRestaurant.category || 'restaurant',
-          cuisine: savedRestaurant.cuisine || [],
-          hours: savedRestaurant.hours || { open: '9:00 AM', close: '11:00 PM' },
-          phone: savedRestaurant.phone || '',
-          priceRange: savedRestaurant.priceRange || '$$',
-          tags: savedRestaurant.tags || []
-        });
-        if (savedRestaurant.image?.secure_url) {
-          setImagePreview(savedRestaurant.image.secure_url);
+        if (isUpdate) {
+          setRestaurants(prev => prev.map(r => r._id === savedRestaurant._id ? savedRestaurant : r));
+        } else {
+          setRestaurants(prev => [savedRestaurant, ...prev]);
         }
+        setRestaurant(savedRestaurant);
+        populateFormFromRestaurant(savedRestaurant);
       }
       
+      setIsCreatingNew(false);
       setIsEditing(false);
       Swal.fire({
         icon: 'success',
-        title: restaurant && restaurant._id ? 'Updated!' : 'Created!',
-        text: restaurant && restaurant._id ? 'Your restaurant has been updated successfully' : 'Your restaurant has been created successfully',
+        title: isUpdate ? 'Updated!' : 'Created!',
+        text: isUpdate
+          ? 'Your restaurant has been updated successfully'
+          : 'Your restaurant has been created successfully',
         confirmButtonColor: '#2B86ED',
         timer: 1500,
         showConfirmButton: false,
@@ -380,14 +403,25 @@ export default function MyRestaurantPage() {
       setLoading(true);
       try {
         await deleteRestaurantAPI(restaurant._id);
+        const remaining = restaurants.filter(r => r._id !== restaurant._id);
+        setRestaurants(remaining);
+        if (remaining.length > 0) {
+          selectRestaurant(remaining[0]);
+        } else {
+          setRestaurant(null);
+          setIsCreatingNew(true);
+          setIsEditing(true);
+          setFormData(defaultFormData());
+          setImagePreview(null);
+          setImageFile(null);
+        }
         Swal.fire({
           icon: 'success',
           title: 'Deleted!',
           text: 'Your restaurant has been deleted.',
           confirmButtonColor: '#2B86ED',
-        }).then(() => {
-          navigate('/home');
         });
+        setLoading(false);
       } catch (error) {
         Swal.fire({
           icon: 'error',
@@ -420,12 +454,47 @@ export default function MyRestaurantPage() {
         
         <div className="text-center mb-8">
           <h1 className={`text-3xl md:text-4xl font-extrabold ${isDarkMode ? 'text-white' : 'text-[#1a3650]'}`}>
-            My Restaurant
+            My Restaurants
           </h1>
           <p className={`text-sm mt-2 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-            {restaurant ? 'Manage your restaurant information' : 'Create your restaurant to start adding offers'}
+            {restaurants.length > 0
+              ? `Manage your ${restaurants.length} restaurant${restaurants.length > 1 ? 's' : ''}`
+              : 'Create your first restaurant to start adding offers'}
           </p>
         </div>
+
+        {restaurants.length > 0 && (
+          <div className={`mb-6 rounded-2xl p-4 shadow-lg ${isDarkMode ? 'bg-white/10 backdrop-blur-md' : 'bg-white'}`}>
+            <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
+              <h2 className={`text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-[#1a3650]'}`}>
+                Your Restaurants
+              </h2>
+              <button
+                onClick={startCreateNew}
+                className="px-4 py-2 rounded-xl bg-[#2B86ED] text-white text-sm hover:bg-[#1a6edb] transition"
+              >
+                + Add Restaurant
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {restaurants.map((r) => (
+                <button
+                  key={r._id}
+                  onClick={() => selectRestaurant(r)}
+                  className={`px-4 py-2 rounded-xl text-sm font-medium transition ${
+                    restaurant?._id === r._id && !isCreatingNew
+                      ? 'bg-[#2B86ED] text-white'
+                      : isDarkMode
+                        ? 'bg-white/10 text-gray-300 hover:bg-white/20'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  {r.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className={`rounded-2xl overflow-hidden shadow-lg ${isDarkMode ? 'bg-white/10 backdrop-blur-md' : 'bg-white'}`}>
           
@@ -714,8 +783,11 @@ export default function MyRestaurantPage() {
                   <button
                     onClick={() => {
                       setIsEditing(false);
-                      if (!restaurant) {
+                      setIsCreatingNew(false);
+                      if (restaurants.length === 0) {
                         navigate('/home');
+                      } else if (restaurant) {
+                        populateFormFromRestaurant(restaurant);
                       }
                     }}
                     className={`flex-1 py-3 rounded-xl font-medium transition ${
@@ -728,7 +800,7 @@ export default function MyRestaurantPage() {
                     onClick={handleSubmit}
                     className="flex-1 py-3 rounded-xl font-medium bg-[#2B86ED] text-white hover:bg-[#1a6edb] transition"
                   >
-                    {restaurant ? 'Save Changes' : 'Create Restaurant'}
+                    {isCreatingNew || !restaurant ? 'Create Restaurant' : 'Save Changes'}
                   </button>
                 </div>
               </div>
@@ -743,12 +815,27 @@ export default function MyRestaurantPage() {
                       📍 {restaurant?.location}
                     </p>
                   </div>
-                  <button
-                    onClick={() => setIsEditing(true)}
-                    className="px-4 py-2 rounded-xl bg-[#2B86ED] text-white text-sm hover:bg-[#1a6edb] transition"
-                  >
-                    ✏️ Edit
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        setIsCreatingNew(false);
+                        setIsEditing(true);
+                      }}
+                      className="px-4 py-2 rounded-xl bg-[#2B86ED] text-white text-sm hover:bg-[#1a6edb] transition"
+                    >
+                      ✏️ Edit
+                    </button>
+                    <button
+                      onClick={startCreateNew}
+                      className={`px-4 py-2 rounded-xl text-sm transition ${
+                        isDarkMode
+                          ? 'bg-white/10 text-white hover:bg-white/20'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      }`}
+                    >
+                      + Add Another
+                    </button>
+                  </div>
                 </div>
 
                 <div className={`p-4 rounded-xl ${isDarkMode ? 'bg-white/5' : 'bg-gray-50'}`}>

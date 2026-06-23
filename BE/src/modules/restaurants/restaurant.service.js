@@ -180,18 +180,14 @@ export const getRestaurantById = asyncHandler(async (req, res, next) => {
   });
 });
 
-// 6. Get My Restaurant (لصاحب المطعم)
+// 6. Get My Restaurants (لصاحب المطعم — يمكن امتلاك أكثر من مطعم)
 export const getMyRestaurant = asyncHandler(async (req, res, next) => {
-  const restaurant = await restaurantModel.findOne({
+  const restaurants = await restaurantModel.find({
     ownerId: req.user._id,
     isDeleted: false,
-  });
+  }).sort({ createdAt: -1 });
 
-  if (!restaurant) {
-    return next(new Error("You don't have a registered restaurant yet", { cause: 404 }));
-  }
-
-  return res.status(200).json({ msg: "done", restaurant });
+  return res.status(200).json({ msg: "done", restaurants });
 });
 
 // ==================== Offers CRUD ====================
@@ -369,16 +365,29 @@ export const useOffer = asyncHandler(async (req, res, next) => {
     });
 });
 
-// 11. Get My Restaurant Offers (لصاحب المطعم يشوف عروض مطعمه)
+// 11. Get My Restaurant Offers (لصاحب المطعم يشوف عروض مطاعمه)
 export const getMyRestaurantOffers = asyncHandler(async (req, res, next) => {
-  const { isActive, sort, page, limit } = req.query;
+  const { restaurantId, isActive, sort, page, limit } = req.query;
 
-  const restaurant = await restaurantModel.findOne({ ownerId: req.user._id, isDeleted: false });
-  if (!restaurant) {
+  const ownedRestaurants = await restaurantModel.find({
+    ownerId: req.user._id,
+    isDeleted: false,
+  });
+
+  if (ownedRestaurants.length === 0) {
     return next(new Error("You don't have a registered restaurant", { cause: 404 }));
   }
 
-  let filter = { restaurantId: restaurant._id };
+  let filter = {};
+  if (restaurantId) {
+    const restaurant = ownedRestaurants.find((r) => r._id.toString() === restaurantId);
+    if (!restaurant) {
+      return next(new Error("Restaurant not found or access denied", { cause: 404 }));
+    }
+    filter.restaurantId = restaurant._id;
+  } else {
+    filter.restaurantId = { $in: ownedRestaurants.map((r) => r._id) };
+  }
   if (isActive !== undefined) filter.isActive = isActive === "true";
 
   let sortOption = {};

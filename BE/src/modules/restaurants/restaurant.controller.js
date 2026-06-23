@@ -93,6 +93,7 @@ restaurantRouter.get(
   "/my-offers",
   authentication,
   authorization([roles.restaurant, roles.admin]),
+  validation(RV.getMyRestaurantOffersSchema),
   RS.getMyRestaurantOffers
 );
 

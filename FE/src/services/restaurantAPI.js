@@ -30,7 +30,7 @@ export const getRestaurantByIdAPI = async (id) => {
   return handleResponse(response);
 };
 
-// جلب مطعمي (لصاحب المطعم)
+// جلب مطاعمي (لصاحب المطعم — قائمة بكل المطاعم)
 export const getMyRestaurantAPI = async () => {
   const response = await fetch(`${API_BASE_URL}/restaurants/my-restaurant`, {
     method: 'GET',
@@ -112,10 +112,11 @@ export const getOffersAPI = async (filters = {}) => {
   return handleResponse(response);
 };
 
-// جلب عروض مطعمي (لصاحب المطعم)
+// جلب عروض مطاعمي (لصاحب المطعم)
 export const getMyRestaurantOffersAPI = async (filters = {}) => {
-  const { isActive, sort, page = 1, limit = 10 } = filters;
+  const { restaurantId, isActive, sort, page = 1, limit = 10 } = filters;
   const params = new URLSearchParams();
+  if (restaurantId) params.append('restaurantId', restaurantId);
   if (isActive !== undefined) params.append('isActive', isActive);
   if (sort) params.append('sort', sort);
   if (page) params.append('page', page);

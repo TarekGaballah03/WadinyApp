@@ -401,8 +401,9 @@ export const getOffersAPI = async (filters = {}) => {
 };
 
 export const getMyRestaurantOffersAPI = async (filters = {}) => {
-  const { isActive, sort, page = 1, limit = 10 } = filters;
+  const { restaurantId, isActive, sort, page = 1, limit = 10 } = filters;
   const params = new URLSearchParams();
+  if (restaurantId) params.append('restaurantId', restaurantId);
   if (isActive !== undefined) params.append('isActive', String(isActive));
   if (sort) params.append('sort', sort);
   if (page) params.append('page', page);

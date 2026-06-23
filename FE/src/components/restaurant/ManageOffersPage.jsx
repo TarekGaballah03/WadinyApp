@@ -17,6 +17,7 @@ export default function ManageOffersPage() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [offers, setOffers] = useState([]);
+  const [restaurants, setRestaurants] = useState([]);
   const [restaurantId, setRestaurantId] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [formData, setFormData] = useState({
@@ -34,26 +35,49 @@ export default function ManageOffersPage() {
     fetchRestaurantAndOffers();
   }, []);
 
-  const fetchRestaurantAndOffers = async () => {
+  const fetchRestaurantAndOffers = async (selectedId = restaurantId) => {
     setLoading(true);
     try {
-      // First get restaurant info
       const restaurantResult = await getMyRestaurantAPI();
-      if (restaurantResult.restaurant) {
-        setRestaurantId(restaurantResult.restaurant._id);
-        
-        // Then get offers
-        const offersResult = await getMyRestaurantOffersAPI();
-        if (offersResult.offers) {
-          setOffers(offersResult.offers);
-        }
+      const list = restaurantResult.restaurants || (restaurantResult.restaurant ? [restaurantResult.restaurant] : []);
+      setRestaurants(list);
+
+      if (list.length === 0) {
+        setRestaurantId(null);
+        setOffers([]);
+        return;
       }
+
+      const activeId = selectedId && list.some(r => r._id === selectedId) ? selectedId : list[0]._id;
+      setRestaurantId(activeId);
+
+      const offersResult = await getMyRestaurantOffersAPI({ restaurantId: activeId });
+      setOffers(offersResult.offers || []);
     } catch (error) {
       console.error('Error fetching data:', error);
       Swal.fire({
         icon: 'error',
         title: 'Error',
         text: error.message || 'Failed to load data',
+        confirmButtonColor: '#2B86ED',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRestaurantChange = async (e) => {
+    const newId = e.target.value;
+    setRestaurantId(newId);
+    setLoading(true);
+    try {
+      const offersResult = await getMyRestaurantOffersAPI({ restaurantId: newId });
+      setOffers(offersResult.offers || []);
+    } catch (error) {
+      Swal.fire({
+        icon: 'error',
+        title: 'Error',
+        text: error.message || 'Failed to load offers',
         confirmButtonColor: '#2B86ED',
       });
     } finally {
@@ -238,11 +262,34 @@ const handleAddOffer = async () => {
           </p>
         </div>
 
-        {/* Add Offer Button */}
-        <div className="flex justify-end mb-6">
+        {/* Restaurant selector & Add Offer */}
+        <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4 mb-6">
+          {restaurants.length > 0 && (
+            <div className="flex-1">
+              <label className={`block text-sm font-medium mb-1 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                Restaurant
+              </label>
+              <select
+                value={restaurantId || ''}
+                onChange={handleRestaurantChange}
+                className={`w-full sm:w-auto min-w-[200px] px-4 py-2 rounded-xl border focus:outline-none focus:ring-2 focus:ring-[#2B86ED] ${
+                  isDarkMode
+                    ? 'bg-gray-800 border-gray-600 text-white'
+                    : 'bg-white border-gray-200 text-gray-900'
+                }`}
+              >
+                {restaurants.map((r) => (
+                  <option key={r._id} value={r._id} className={isDarkMode ? 'bg-gray-800 text-white' : ''}>
+                    {r.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <button
             onClick={() => setShowAddModal(true)}
-            className="px-6 py-3 rounded-xl bg-[#2B86ED] text-white font-medium hover:bg-[#1a6edb] transition flex items-center gap-2"
+            disabled={!restaurantId}
+            className="px-6 py-3 rounded-xl bg-[#2B86ED] text-white font-medium hover:bg-[#1a6edb] transition flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />

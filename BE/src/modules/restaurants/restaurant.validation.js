@@ -85,3 +85,13 @@ export const getOffersSchema = {
     limit: joi.number().min(1).max(50).default(10),
   }),
 };
+
+export const getMyRestaurantOffersSchema = {
+  query: joi.object({
+    restaurantId: generalRules.id,
+    isActive: joi.boolean(),
+    sort: joi.string().valid("newest", "expiring", "popular"),
+    page: joi.number().min(1).default(1),
+    limit: joi.number().min(1).max(50).default(10),
+  }),
+};
